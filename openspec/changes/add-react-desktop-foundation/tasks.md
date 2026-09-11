@@ -52,3 +52,4 @@
 - [x] 6.7 Criar diário datado com decisões, comandos e resultados reais de C++, Rust e TypeScript, limitações e próximo marco; verificar que falhas/validações não executadas não são omitidas.
 - [x] 6.8 Executar format checks C++/Rust/frontend, clangd no C API, builds/testes completos e revisão de segurança/ownership/tamanhos; corrigir problemas e validar `add-react-desktop-foundation --strict` antes de marcar todas as tarefas.
 - [x] 6.9 Ignorar artefatos gerados ainda expostos (`*.tsbuildinfo`, caches/cobertura e `apps/desktop/src-tauri/gen/`) sem ignorar fontes, lockfiles, configuração ou ícones; verificar com `git status --porcelain -uall` que node_modules/dist/target e esses gerados não aparecem como untracked e registrar a contagem real no diário.
+- [x] 6.10 Adicionar `@tauri-apps/cli` v2 como devDependency bloqueada no lockfile e script npm `tauri`, documentando e verificando `npm run tauri dev`/`npm run tauri -- --version` sem depender de instalação global.

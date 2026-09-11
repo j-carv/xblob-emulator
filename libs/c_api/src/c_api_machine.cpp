@@ -12,12 +12,6 @@
 #include <new>
 #include <string>
 
-struct xblob_machine_s {
-    std::unique_ptr<xblob::machine::MachineSession> session;
-    xblob_prepare_diagnostic_t last_diagnostic{};
-    xblob::machine::TraceRingBuffer trace_buffer{1024};
-};
-
 extern "C" {
 
 xblob_status_t xblob_machine_create(xblob_machine_t* out_machine) {
@@ -226,6 +220,72 @@ xblob_status_t xblob_machine_clear_trace(xblob_machine_t machine) {
         return XBLOB_STATUS_ERROR_NULL_POINTER;
     }
     machine->trace_buffer.Clear();
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_get_frame_metadata(const struct xblob_machine_s* machine,
+                                                xblob_frame_metadata_t* out_metadata) {
+    if (!machine || !out_metadata) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    if (out_metadata->struct_size < sizeof(uint32_t)) {
+        return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+    }
+    const auto meta = machine->session->GetLatestFrameMetadata();
+    xblob_frame_metadata_t full{};
+    full.struct_size = sizeof(xblob_frame_metadata_t);
+    full.is_valid =
+        (meta.sequence_number > 0 && meta.buffer_size > 0 && meta.width > 0 && meta.height > 0) ? 1
+                                                                                                : 0;
+    full.width = full.is_valid ? meta.width : 0;
+    full.height = full.is_valid ? meta.height : 0;
+    full.pitch = full.is_valid ? meta.pitch : 0;
+    full.pixel_format = static_cast<uint32_t>(meta.pixel_format);
+    full.sequence_number = meta.sequence_number;
+    full.frame_cycle = meta.frame_cycle;
+    full.buffer_size = full.is_valid ? meta.buffer_size : 0;
+
+    const size_t copy_size =
+        std::min(static_cast<size_t>(out_metadata->struct_size), sizeof(xblob_frame_metadata_t));
+    std::memcpy(out_metadata, &full, copy_size);
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_copy_frame_pixels(const struct xblob_machine_s* machine,
+                                               uint8_t* buffer, size_t* inout_buffer_size) {
+    if (!machine || !inout_buffer_size) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    const auto meta = machine->session->GetLatestFrameMetadata();
+    if (meta.sequence_number == 0 || meta.width == 0 || meta.height == 0) {
+        *inout_buffer_size = 0;
+        return XBLOB_STATUS_OK;
+    }
+
+    const size_t required_size = static_cast<size_t>(meta.buffer_size);
+
+    if (!buffer) {
+        *inout_buffer_size = required_size;
+        return XBLOB_STATUS_OK;
+    }
+
+    if (*inout_buffer_size < required_size) {
+        *inout_buffer_size = required_size;
+        return XBLOB_STATUS_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    if (required_size == 0) {
+        *inout_buffer_size = 0;
+        return XBLOB_STATUS_OK;
+    }
+
+    auto copy_res =
+        machine->session->CopyLatestFrame(std::span<xblob::u8>(buffer, *inout_buffer_size));
+    if (!copy_res) {
+        return xblob::c_api_internal::map_error_to_status(copy_res.error().code);
+    }
+
+    *inout_buffer_size = *copy_res;
     return XBLOB_STATUS_OK;
 }
 

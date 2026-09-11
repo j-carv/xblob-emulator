@@ -1,4 +1,13 @@
-import { BridgeApi, CoreInfo, MachinePrepareDiagnostic, MediaReport } from './types';
+import {
+  BootReport,
+  BridgeApi,
+  CoreInfo,
+  GpuFrameSnapshot,
+  MachinePrepareDiagnostic,
+  MediaReport,
+  VfsDirectoryPage,
+  VfsEntry,
+} from './types';
 
 export class MockBridge implements BridgeApi {
   private mockFilePickerSequence = 0;
@@ -7,9 +16,10 @@ export class MockBridge implements BridgeApi {
     await new Promise((r) => setTimeout(r, 50));
     return {
       abiVersionMajor: 1,
-      abiVersionMinor: 1,
+      abiVersionMinor: 4,
       abiVersionPatch: 0,
-      capabilities: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
+      capabilities:
+        1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12),
       productName: 'xblob',
       productVersion: '0.1.0',
     };
@@ -147,6 +157,139 @@ export class MockBridge implements BridgeApi {
       titleIdHex: '0x12345678',
       ramSizeBytes: 67108864,
       isPrepared: true,
+    };
+  }
+
+  async getDiagnosticFrameSnapshot(filePath: string): Promise<GpuFrameSnapshot> {
+    await new Promise((r) => setTimeout(r, 60));
+
+    if (filePath.includes('missing') || filePath.includes('notfound')) {
+      const err = new Error('Arquivo não encontrado no caminho especificado');
+      (err as unknown as { code: string }).code = 'NOT_FOUND';
+      throw err;
+    }
+
+    const lower = filePath.toLowerCase();
+    if (!lower.includes('synthetic') && !lower.includes('test_') && !lower.includes('diagnostic')) {
+      const err = new Error(
+        'Visualização gráfica de framebuffer indisponível para esta mídia: apenas fixtures sintéticas clean-room são suportadas.'
+      );
+      (err as unknown as { code: string }).code = 'NOT_ELIGIBLE';
+      throw err;
+    }
+
+    // Generate 64x64 synthetic diagnostic test frame
+    const width = 64;
+    const height = 64;
+    const pitch = width * 4;
+    const bufferSize = pitch * height;
+    const raw = new Uint8Array(bufferSize);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const offset = (y * width + x) * 4;
+        raw[offset + 0] = (x * 4) & 0xff; // R
+        raw[offset + 1] = 0xcc;           // G
+        raw[offset + 2] = (y * 4) & 0xff; // B
+        raw[offset + 3] = 0xff;           // A
+      }
+    }
+    let binary = '';
+    for (let i = 0; i < raw.length; i++) {
+      binary += String.fromCharCode(raw[i]);
+    }
+    const pixelsBase64 =
+      typeof btoa === 'function'
+        ? btoa(binary)
+        : Buffer.from(binary, 'binary').toString('base64');
+
+    return {
+      metadata: {
+        width,
+        height,
+        pitch,
+        pixelFormat: 1,
+        sequenceNumber: 1,
+        frameCycle: 12000,
+        bufferSize,
+        isValid: true,
+      },
+      pixelsBase64,
+    };
+  }
+
+  async prepareMedia(filePath: string): Promise<BootReport> {
+    await new Promise((r) => setTimeout(r, 100));
+
+    if (filePath.includes('missing') || filePath.includes('notfound')) {
+      const err = new Error('Arquivo não encontrado no caminho especificado');
+      (err as unknown as { code: string }).code = 'NOT_FOUND';
+      throw err;
+    }
+
+    if (filePath.includes('corrupt') || filePath.includes('invalid_magic')) {
+      const err = new Error('Assinatura mágica ou cabeçalho de imagem inválido');
+      (err as unknown as { code: string }).code = 'CORRUPT_MEDIA';
+      throw err;
+    }
+
+    if (filePath.includes('no_xbe')) {
+      const err = new Error('Nenhum default.xbe executável encontrado na mídia');
+      (err as unknown as { code: string }).code = 'UNSUPPORTED_FORMAT';
+      throw err;
+    }
+
+    const isIso = filePath.toLowerCase().endsWith('.iso');
+    return {
+      mediaType: isIso ? 'xiso_trimmed' : 'xbe',
+      defaultXbePath: isIso ? 'D:\\DEFAULT.XBE' : 'DEFAULT.XBE',
+      titleName: 'Mock Clean-Room Title',
+      titleId: 0x12345678,
+      titleIdHex: '0x12345678',
+      entryPoint: 0x00011000,
+      entryPointHex: '0x00011000',
+      sectionCount: 3,
+      mediaSizeBytes: isIso ? 4700372992 : 3145728,
+      isBootable: true,
+    };
+  }
+
+  async browseMediaVfs(
+    filePath: string,
+    _directory: string,
+    offset: number,
+    limit: number
+  ): Promise<VfsDirectoryPage> {
+    await new Promise((r) => setTimeout(r, 60));
+
+    if (filePath.includes('missing') || filePath.includes('notfound')) {
+      const err = new Error('Arquivo não encontrado no caminho especificado');
+      (err as unknown as { code: string }).code = 'NOT_FOUND';
+      throw err;
+    }
+
+    const allEntries: VfsEntry[] = [
+      { name: 'DEFAULT.XBE', size: 3145728, isDirectory: false, attributes: 0x80 },
+      { name: 'MEDIA', size: 0, isDirectory: true, attributes: 0x10 },
+      { name: 'SYSTEM', size: 0, isDirectory: true, attributes: 0x10 },
+      { name: 'CONFIG.INI', size: 1024, isDirectory: false, attributes: 0x80 },
+      { name: 'SPLASH.BMP', size: 65536, isDirectory: false, attributes: 0x80 },
+      { name: 'AUDIO', size: 0, isDirectory: true, attributes: 0x10 },
+      { name: 'SHADERS', size: 0, isDirectory: true, attributes: 0x10 },
+      { name: 'FONTS', size: 0, isDirectory: true, attributes: 0x10 },
+      { name: 'README.TXT', size: 2048, isDirectory: false, attributes: 0x80 },
+      { name: 'DATA.BIN', size: 1048576, isDirectory: false, attributes: 0x80 },
+      { name: 'PATCH.XBE', size: 524288, isDirectory: false, attributes: 0x80 },
+      { name: 'EXTRA', size: 0, isDirectory: true, attributes: 0x10 },
+    ];
+
+    const totalCount = allEntries.length;
+    const pageEntries = allEntries.slice(offset, offset + limit);
+
+    return {
+      totalCount,
+      offset,
+      limit,
+      entries: pageEntries,
     };
   }
 }

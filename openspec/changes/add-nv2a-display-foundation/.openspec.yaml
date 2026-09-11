@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-11
+goal: Produzir saída gráfica determinística a partir de comandos guest
+  sintéticos sem alegar compatibilidade com jogos ou precisão completa da GPU.

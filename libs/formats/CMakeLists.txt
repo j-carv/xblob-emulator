@@ -2,6 +2,8 @@ add_library(xblob_formats STATIC
   src/xbe.cpp
   src/xiso.cpp
   src/inspector.cpp
+  src/xdvdfs_entry_reader.cpp
+  src/xdvdfs.cpp
 )
 
 target_include_directories(xblob_formats

@@ -39,6 +39,11 @@ int MapErrorToExitCode(xblob::ErrorCode code) {
     case xblob::ErrorCode::AccessDenied:
     case xblob::ErrorCode::IoError:
     case xblob::ErrorCode::UnexpectedEof:
+    case xblob::ErrorCode::InvalidPath:
+    case xblob::ErrorCode::NotADirectory:
+    case xblob::ErrorCode::IsADirectory:
+    case xblob::ErrorCode::InvalidHandle:
+    case xblob::ErrorCode::ReadOnlyFileSystem:
         return 2;
 
     case xblob::ErrorCode::InvalidMagic:

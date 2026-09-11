@@ -9,7 +9,7 @@ int main(void) {
     assert(major == 1);
 
     uint32_t minor = xblob_get_abi_version_minor();
-    assert(minor == 2);
+    assert(minor == 4);
 
     uint32_t patch = xblob_get_abi_version_patch();
     assert(patch == 0);
@@ -18,6 +18,10 @@ int main(void) {
     assert((caps & XBLOB_CAPABILITY_MEDIA_INSPECTION) != 0);
     assert((caps & XBLOB_CAPABILITY_MACHINE_SESSION) != 0);
     assert((caps & XBLOB_CAPABILITY_DIAGNOSTIC_EXECUTION) != 0);
+    assert((caps & XBLOB_CAPABILITY_FRAMEBUFFER_PRESENTATION) != 0);
+    assert((caps & XBLOB_CAPABILITY_NV2A_GPU) != 0);
+    assert((caps & XBLOB_CAPABILITY_XDVDFS_VFS) != 0);
+    assert((caps & XBLOB_CAPABILITY_MEDIA_BOOT) != 0);
 
     const char* version = xblob_get_product_version();
     assert(version != NULL);
@@ -37,14 +41,24 @@ int main(void) {
     xblob_status_t status = xblob_get_core_info(&info);
     assert(status == XBLOB_STATUS_OK);
     assert(info.abi_version_major == 1);
-    assert(info.abi_version_minor == 2);
+    assert(info.abi_version_minor == 4);
     assert(info.capabilities == caps);
     assert(strcmp(info.product_name, "xblob") == 0);
 
     // Verify null destroy and null call safety
     xblob_media_report_destroy(NULL);
     xblob_machine_destroy(NULL);
+    xblob_vfs_browser_destroy(NULL);
     assert(xblob_machine_step(NULL, 1, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_machine_prepare_media(NULL, NULL, 0, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_vfs_browser_create(NULL, 0, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+
+    // Frame presentation API null safety
+    xblob_frame_metadata_t meta;
+    memset(&meta, 0, sizeof(meta));
+    meta.struct_size = (uint32_t)sizeof(meta);
+    assert(xblob_machine_get_frame_metadata(NULL, &meta) == XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_machine_copy_frame_pixels(NULL, NULL, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
 
     printf("C11 smoke test passed successfully.\n");
     return 0;

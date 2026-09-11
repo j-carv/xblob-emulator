@@ -9,7 +9,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_core_info,
             commands::inspect_media,
-            commands::prepare_machine_diagnostic
+            commands::prepare_machine_diagnostic,
+            commands::get_diagnostic_frame_snapshot,
+            commands::prepare_media,
+            commands::browse_media_vfs
         ])
         .run(tauri::generate_context!())
         .expect("error while running xblob desktop application");
@@ -28,9 +31,25 @@ mod tests {
 
         let info = result.unwrap();
         assert_eq!(info.abi_version_major, 1);
-        assert_eq!(info.abi_version_minor, 2);
+        assert_eq!(info.abi_version_minor, 4);
         assert_eq!(info.abi_version_patch, 0);
         assert!(info.capabilities > 0);
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_FRAMEBUFFER_PRESENTATION) != 0,
+            "Must have FRAMEBUFFER_PRESENTATION capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_NV2A_GPU) != 0,
+            "Must have NV2A_GPU capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_XDVDFS_VFS) != 0,
+            "Must have XDVDFS_VFS capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_MEDIA_BOOT) != 0,
+            "Must have MEDIA_BOOT capability"
+        );
         assert_eq!(info.product_name, "xblob");
         assert_eq!(info.product_version, "0.1.0");
     }
@@ -65,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn test_safe_machine_session_raii_lifecycle() {
+    fn test_safe_machine_session_raii_lifecycle_and_frames() {
         let session = ffi::SafeMachineSession::new();
         assert!(
             session.is_ok(),
@@ -76,6 +95,19 @@ mod tests {
         let state = session.get_state();
         assert!(state.is_ok(), "Getting state should succeed");
         assert_eq!(state.unwrap(), ffi::XBLOB_MACHINE_STATE_CREATED);
+
+        let meta = session.get_frame_metadata();
+        assert!(meta.is_ok(), "Getting frame metadata should succeed");
+        let meta = meta.unwrap();
+        assert_eq!(meta.is_valid, 0, "Initial frame is_valid must be 0");
+        assert_eq!(meta.sequence_number, 0, "Initial sequence number must be 0");
+
+        let pixels = session.copy_frame_pixels(1024);
+        assert!(
+            pixels.is_ok(),
+            "Copying pixels before any frame should succeed"
+        );
+        assert!(pixels.unwrap().is_empty(), "Initial pixels should be empty");
         // Dropping session here verifies RAII cleanup doesn't crash or leak
     }
 
@@ -85,6 +117,55 @@ mod tests {
             "/path/to/definitely/non_existent_file.xbe".to_string(),
         );
         assert!(result.is_err(), "Missing file must return error");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_diagnostic_frame_snapshot_ineligible() {
+        let result =
+            commands::get_diagnostic_frame_snapshot("/path/to/commercial_game.xbe".to_string());
+        assert!(
+            result.is_err(),
+            "Non-synthetic media must be ineligible for frame snapshot"
+        );
+        let err = result.unwrap_err();
+        assert_eq!(err.code, "NOT_ELIGIBLE");
+        assert!(err.message.contains("indisponível"));
+    }
+
+    #[test]
+    fn test_diagnostic_frame_snapshot_missing_synthetic() {
+        let result = commands::get_diagnostic_frame_snapshot(
+            "/path/to/synthetic_test_workload.xbe".to_string(),
+        );
+        assert!(
+            result.is_err(),
+            "Missing synthetic file must return NOT_FOUND"
+        );
+        let err = result.unwrap_err();
+        assert_eq!(err.code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_prepare_media_missing_file() {
+        let result = tauri::async_runtime::block_on(commands::prepare_media(
+            "/path/to/non_existent.iso".to_string(),
+        ));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_browse_media_vfs_missing_file() {
+        let result = tauri::async_runtime::block_on(commands::browse_media_vfs(
+            "/path/to/non_existent.iso".to_string(),
+            "".to_string(),
+            0,
+            10,
+        ));
+        assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code, "NOT_FOUND");
     }

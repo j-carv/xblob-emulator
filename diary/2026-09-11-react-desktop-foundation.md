@@ -103,3 +103,20 @@ Em conformidade com a tarefa 6.9 da change `add-react-desktop-foundation`, confi
   - Total de arquivos untracked legítimos (`git status --porcelain=v1 -uall`): **203 arquivos** (fontes, testes, specs, documentação e diários da change).
   - Total de arquivos ignorados (`git status --ignored --porcelain=v1 -uall`): **18.321 arquivos** ignorados pelo Git (incluindo `node_modules/`, diretórios de build `build*`, caches e targets Rust).
   - Confirmação via `git check-ignore -v` de que os 6 arquivos gerados anteriormente expostos (`tsconfig.app.tsbuildinfo`, `tsconfig.node.tsbuildinfo`, e os 4 esquemas em `src-tauri/gen/schemas/`) estão devidamente ignorados e nenhum diretório como `dist/`, `target/` ou `node_modules/` permanece exposto como untracked.
+
+---
+
+## 8. CLI Tauri local e reproduzível
+
+A CLI `@tauri-apps/cli` 2.11.4 foi adicionada como devDependency e bloqueada no `package-lock.json`, com o script npm `tauri`. A aplicação desktop agora pode ser iniciada sem instalação global usando `npm run tauri dev` em `apps/desktop`.
+
+Verificações executadas:
+
+- `npm run tauri -- --version`: `tauri-cli 2.11.4`.
+- `npm run typecheck`: aprovado.
+- `npm run lint`: aprovado.
+- `npm test`: 25/25 testes aprovados.
+- `npm run build`: bundle Vite produzido com sucesso.
+- `npm audit --omit=dev`: zero vulnerabilidades de produção.
+
+O audit completo reportou duas vulnerabilidades moderadas transitivas em tooling de desenvolvimento do Vitest. A correção disponível exige upgrade major para Vitest 5 e não foi aplicada silenciosamente; deve ser tratada em uma change de atualização de dependências.

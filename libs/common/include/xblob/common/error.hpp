@@ -15,6 +15,11 @@ enum class ErrorCode {
     AccessDenied,
     IoError,
     UnexpectedEof,
+    InvalidPath,
+    NotADirectory,
+    IsADirectory,
+    InvalidHandle,
+    ReadOnlyFileSystem,
 
     // Structural / Parsing errors
     InvalidMagic,

@@ -1,6 +1,7 @@
 add_library(xblob_io STATIC
   src/file_source.cpp
   src/binary_reader.cpp
+  src/subrange_byte_source.cpp
 )
 
 target_include_directories(xblob_io

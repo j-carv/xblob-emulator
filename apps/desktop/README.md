@@ -18,20 +18,23 @@ xblob Desktop is structured into strictly isolated architectural layers:
    - Enforces a restricted Content Security Policy (CSP) with arbitrary network, shell, and filesystem write access completely disabled.
 
 3. **Core C ABI (`libs/c_api`)**:
-   - Pure C11 ABI boundary (`xblob/c_api.h`) with ABI version 1.1.
-   - Exposes opaque handles, explicit error codes, ABI version negotiation, UTF-8 safe buffers, and machine diagnostic preparation.
+   - Pure C11 ABI boundary (`xblob/c_api.h`) with ABI version 1.3.
+   - Exposes opaque handles, explicit error codes, ABI version negotiation, capability discovery, UTF-8 safe buffers, machine diagnostic preparation, and bounded GPU frame snapshots.
    - Traps all C++ exceptions (`noexcept` boundary).
 
-4. **Core C++ Engine (`libs/bus`, `libs/memory`, `libs/loader`, `libs/machine`, `libs/formats`, `libs/io`, `libs/common`)**:
+4. **Core C++ Engine (`libs/bus`, `libs/pci`, `libs/gpu`, `libs/memory`, `libs/loader`, `libs/machine`, `libs/formats`, `libs/io`, `libs/common`)**:
    - Safe parsing, hashing, and header inspection of XBE executables and XISO disc images.
-   - Guest bus with synthetic register banks and MMIO routing.
+   - Guest bus with synthetic register banks, PCI configuration/BAR routing, and MMIO dispatch.
+   - Initial NV2A graphics device with register file allowlist, RGBA8 surfaces, and pushbuffer execution.
    - IA-32 4 KiB paging virtual memory with TLB.
    - Pure transactional XBE loader with atomic rollback.
    - Deterministic machine session lifecycle management.
 
 ## Disclaimer & Scope
 
-> **Important**: This application is strictly an educational and preservation-oriented media inspection and diagnostic tool. It **does not play, run, execute, or emulate commercial Xbox games, and contains no commercial BIOS or keys**. All interactive controls are strictly diagnostic and validation-oriented (no "Play" or "Run" buttons).
+> **Important**: The ultimate product goal of **xblob** is to load and run/play `.xbe`, `.iso`, and `.xiso` titles legally provided by the user. Commercial media is supported as local user input, while the repository strictly prohibits distributing, embedding, or depending on proprietary BIOS, keys, firmware, official SDKs, or games.
+> 
+> In the **current milestone**, the application operates in a diagnostic and structural validation phase: it **does not yet execute commercial games**, and graphical presentation is bounded to synthetic clean-room fixtures. Interactive controls are strictly diagnostic (no "Play" or "Run" buttons) until the end-to-end execution pipeline is validated.
 
 ## System Requirements
 
@@ -70,6 +73,21 @@ npm run build
 ```
 
 ### Tauri Desktop Shell
+
+A CLI Tauri v2 é instalada localmente pelo `npm ci`; não é necessária instalação global.
+
+```bash
+cd apps/desktop
+npm ci
+
+# Abrir a aplicação desktop em modo de desenvolvimento
+npm run tauri dev
+
+# Conferir a versão local da CLI
+npm run tauri -- --version
+```
+
+Verificações diretas do adaptador Rust:
 
 ```bash
 cd apps/desktop/src-tauri

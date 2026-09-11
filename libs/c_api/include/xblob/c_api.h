@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 #define XBLOB_C_API_VERSION_MAJOR 1
-#define XBLOB_C_API_VERSION_MINOR 2
+#define XBLOB_C_API_VERSION_MINOR 4
 #define XBLOB_C_API_VERSION_PATCH 0
 
 typedef enum xblob_status_t {
@@ -52,6 +52,10 @@ typedef enum xblob_status_t {
 #define XBLOB_CAPABILITY_XBE_LOADER (1ULL << 6)
 #define XBLOB_CAPABILITY_MACHINE_SESSION (1ULL << 7)
 #define XBLOB_CAPABILITY_DIAGNOSTIC_EXECUTION (1ULL << 8)
+#define XBLOB_CAPABILITY_FRAMEBUFFER_PRESENTATION (1ULL << 9)
+#define XBLOB_CAPABILITY_NV2A_GPU (1ULL << 10)
+#define XBLOB_CAPABILITY_XDVDFS_VFS (1ULL << 11)
+#define XBLOB_CAPABILITY_MEDIA_BOOT (1ULL << 12)
 
 typedef enum xblob_media_type_t {
     XBLOB_MEDIA_TYPE_UNKNOWN = 0,
@@ -197,6 +201,68 @@ XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_trace_summa
 
 XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL
 xblob_machine_clear_trace(xblob_machine_t machine);
+
+/* --- Framebuffer Presentation & GPU Diagnostics API (Added in ABI 1.3) --- */
+
+typedef struct xblob_frame_metadata_t {
+    uint32_t struct_size;
+    uint32_t width;
+    uint32_t height;
+    uint32_t pitch;
+    uint32_t pixel_format;
+    uint64_t sequence_number;
+    uint64_t frame_cycle;
+    uint32_t buffer_size;
+    int is_valid;
+} xblob_frame_metadata_t;
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_frame_metadata(
+    const struct xblob_machine_s* machine, xblob_frame_metadata_t* out_metadata);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_copy_frame_pixels(
+    const struct xblob_machine_s* machine, uint8_t* buffer, size_t* inout_buffer_size);
+
+/* --- Media Boot & VFS Browsing API (Added in ABI 1.4) --- */
+
+typedef struct xblob_boot_report_t {
+    uint32_t struct_size;
+    xblob_media_type_t media_type;
+    char default_xbe_path[256];
+    char title_name[64];
+    uint32_t title_id;
+    uint32_t entry_point;
+    uint32_t section_count;
+    uint64_t media_size_bytes;
+    int is_bootable;
+    char error_message[256];
+} xblob_boot_report_t;
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL
+xblob_machine_prepare_media(xblob_machine_t machine, const char* path_utf8, size_t path_length,
+                            xblob_boot_report_t* out_report);
+
+struct xblob_vfs_browser_s;
+typedef struct xblob_vfs_browser_s* xblob_vfs_browser_t;
+
+typedef struct xblob_dir_entry_t {
+    char name[256];
+    uint64_t size;
+    int is_directory;
+    uint32_t attributes;
+} xblob_dir_entry_t;
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_vfs_browser_create(
+    const char* path_utf8, size_t path_length, xblob_vfs_browser_t* out_browser);
+
+XBLOB_C_API_EXPORT void XBLOB_C_API_CALL xblob_vfs_browser_destroy(xblob_vfs_browser_t browser);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL
+xblob_vfs_browser_get_entry_count(xblob_vfs_browser_t browser, const char* dir_path_utf8,
+                                  size_t dir_path_len, uint32_t* out_count);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_vfs_browser_list_entries(
+    xblob_vfs_browser_t browser, const char* dir_path_utf8, size_t dir_path_len, uint32_t offset,
+    uint32_t limit, xblob_dir_entry_t* out_entries, uint32_t* inout_count);
 
 #ifdef __cplusplus
 }

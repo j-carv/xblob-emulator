@@ -27,6 +27,21 @@ O desenvolvimento apoia-se estritamente em documentações públicas e literatur
 2. **Documentação Pública de Ordinais de Exportação**:
    - Especificações públicas de projetos open-source e documentações históricas de comunidade (como especificações do OpenXDK e referências públicas de ordinais de exportação do kernel).
    - Mapeamento ordinal puro baseado em convenções padrão `__stdcall` com checagem rigorosa de ponteiros guest.
+3. **Barramento PCI (Peripheral Component Interconnect)**:
+   - *PCI Local Bus Specification* (Revisão 2.2/2.3, PCI-SIG).
+   - Mapeamento padrão de cabeçalho de configuração Type 0 (Vendor ID, Device ID, Command, Status, BARs 0..5, Interrupt Line/Pin).
+   - Protocolo padrão de dimensionamento de BARs (`0xFFFFFFFF` write followed by read) e resolução determinística de colisões de faixas de endereçamento.
+4. **GPU NV2A e Protocolo Pushbuffer**:
+   - Documentações públicas de código aberto de arquitetura gráfica NV2A / GeForce 3 / Xbox (nouveau, especificações abertas de registradores NV20/NV2A).
+   - Protocolo de comandos Pushbuffer (métodos, subcanais, pacotes Method/Non-Inc) derivados estritamente de especificações públicas.
+   - Desacoplamento total de APIs gráficas proprietárias e isolamento em superfícies RGBA8 puras em memória de host.
+5. **Sistema de Arquivos XDVDFS e Mídia Xbox**:
+   - Especificações públicas de sistemas de arquivos de disco do console Xbox original (documentação de comunidade, XDVDFS/XISO layout specs).
+   - Estrutura de setores (2048 bytes), magic descriptor `"MICROSOFT*XBOX*MEDIA"` nos setores 32 (raw) ou 0 (trimmed).
+   - Estrutura da tabela de diretórios em árvore binária (BST com offset esquerdo/direito relativos em palavras de 4 bytes, 14 bytes de cabeçalho por entrada, nomes ASCII sem nulos intermediários).
+6. **Semântica de VFS Xbox e Serviços de Arquivo NT/Kernel**:
+   - Especificações da API NT e documentações públicas de ordinais de exportação do kernel do Xbox (NtCreateFile 190, NtReadFile 219, NtWriteFile 256, SetFilePointer 224, NtClose 18, NtQueryInformationFile 217, NtQueryDirectoryFile 216, NtDeviceIoControlFile 196).
+   - Semântica de normalização de caminhos (drive letters como `D:`, separadores de barra invertida, case-insensibilidade, ausência de path traversal `..`).
 
 ---
 
@@ -35,3 +50,5 @@ O desenvolvimento apoia-se estritamente em documentações públicas e literatur
 - **Ponteiros Host vs. Guest**: Nenhuma estrutura de dados ou operando da CPU armazena ou expõe ponteiros nativos do host. Todos os acessos a memória passam pelo tradutor de espaço virtual (`VirtualMemory` / `AddressSpace`).
 - **Exceções Arquiteturais**: As faltas `#UD` (Invalid Opcode), `#GP` (General Protection Fault) e `#PF` (Page Fault) são tratadas estritamente segundo as especificações do manual IA-32, distinguindo-se categoricamente de erros internos da máquina emuladora.
 - **Kernel HLE e Registro Allowlist**: Apenas ordinais expressamente registrados na tabela de despacho (`ExportRegistry`) são aceitos. Tentativas de chamada a ordinais desconhecidos resultam em falha segura e controlada sem invocar código arbitrário.
+- **Registradores e Comandos NV2A em Allowlist**: O registrador de GPU e os métodos de pushbuffer rejeitam terminantemente qualquer comando ou endereço fora das faixas explicitamente permitidas, descartando operações malformadas com códigos de erro defensivos.
+- **Orçamentos Rígidos de Execução**: Pushbuffers e instruções são delimitados por orçamentos máximos de contagem de métodos, palavras e ciclos, impedindo loops infinitos e negação de serviço.

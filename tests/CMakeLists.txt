@@ -1,5 +1,6 @@
 add_library(xblob_test_fixtures STATIC
   fixtures/synthetic_media.cpp
+  fixtures/synthetic_xdvdfs.cpp
 )
 
 target_include_directories(xblob_test_fixtures
@@ -36,16 +37,20 @@ endfunction()
 
 xblob_add_test(test_common unit/test_common.cpp xblob_common)
 xblob_add_test(test_bus unit/test_bus.cpp xblob_memory)
+xblob_add_test(test_pci unit/test_pci.cpp xblob_pci xblob_bus)
+xblob_add_test(test_gpu unit/test_gpu.cpp xblob_gpu xblob_pci xblob_bus)
 xblob_add_test(test_io unit/test_io.cpp xblob_io)
 xblob_add_test(test_formats unit/test_formats.cpp xblob_test_fixtures)
+xblob_add_test(test_vfs unit/test_vfs.cpp xblob_vfs xblob_test_fixtures)
 xblob_add_test(test_memory unit/test_memory.cpp xblob_memory)
 xblob_add_test(test_virtual_memory unit/test_virtual_memory.cpp xblob_cpu)
 xblob_add_test(test_loader unit/test_loader.cpp xblob_loader xblob_test_fixtures)
 xblob_add_test(test_machine_session unit/test_machine_session.cpp xblob_machine xblob_test_fixtures)
+xblob_add_test(test_machine_gpu unit/test_machine_gpu.cpp xblob_machine xblob_test_fixtures)
 xblob_add_test(test_scheduler unit/test_scheduler.cpp xblob_core)
 xblob_add_test(test_cpu unit/test_cpu.cpp xblob_cpu)
 xblob_add_test(test_cpu_extended unit/test_cpu_extended.cpp xblob_cpu)
-xblob_add_test(test_kernel unit/test_kernel.cpp xblob_kernel)
+xblob_add_test(test_kernel unit/test_kernel.cpp xblob_kernel xblob_test_fixtures)
 xblob_add_test(test_inspector_integration integration/test_inspector_integration.cpp xblob_test_fixtures)
 xblob_add_test(test_machine_integration integration/test_machine_integration.cpp xblob_cpu xblob_core)
 xblob_add_test(test_c_api unit/test_c_api.cpp xblob_c_api xblob_test_fixtures)

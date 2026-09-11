@@ -4,6 +4,7 @@ add_library(xblob_kernel STATIC
   src/guest_heap.cpp
   src/sync_objects.cpp
   src/thread_scheduler.cpp
+  src/file_services.cpp
   src/kernel_hle.cpp
 )
 
@@ -19,6 +20,7 @@ target_link_libraries(xblob_kernel
     xblob_memory
     xblob_cpu
     xblob_core
+    xblob_vfs
 )
 
 xblob_set_target_warnings(xblob_kernel)

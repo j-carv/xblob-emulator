@@ -39,6 +39,8 @@ public:
 
     [[nodiscard]] Result<void> ReadBytes(GuestAddr addr, MutableByteSpan dest) const;
     [[nodiscard]] Result<void> WriteBytes(GuestAddr addr, ByteSpan src);
+    [[nodiscard]] Result<void> ValidateRange(GuestAddr addr, GuestSize len,
+                                             MemoryPermission required_perm) const;
 
 private:
     [[nodiscard]] Result<std::reference_wrapper<const Region>>

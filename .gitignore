@@ -35,3 +35,8 @@ apps/desktop/src-tauri/gen/
 
 # CMake presets build directories
 build-*/
+build_*/
+
+# Agent worktrees and local orchestration manifest
+.worktrees/
+

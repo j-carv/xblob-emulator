@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-09-11
+goal: Permitir que o emulador monte mídia fornecida pelo usuário, localize
+  default.xbe e prepare uma sessão real através de um pipeline seguro e
+  testável.

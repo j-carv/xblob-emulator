@@ -1,5 +1,6 @@
 add_library(xblob_machine STATIC
   src/machine_session.cpp
+  src/media_boot_pipeline.cpp
   src/trace_buffer.cpp
 )
 
@@ -17,7 +18,11 @@ target_link_libraries(xblob_machine
     xblob_kernel
     xblob_memory
     xblob_bus
+    xblob_pci
+    xblob_gpu
     xblob_loader
+    xblob_formats
+    xblob_vfs
 )
 
 xblob_set_target_warnings(xblob_machine)

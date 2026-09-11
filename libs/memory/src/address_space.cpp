@@ -365,4 +365,16 @@ Result<void> AddressSpace::WriteBytes(GuestAddr addr, ByteSpan src) {
     return Error{ErrorCode::UnsupportedFeature, "WriteBytes não suportado em MMIO", addr};
 }
 
+Result<void> AddressSpace::ValidateRange(GuestAddr addr, GuestSize len,
+                                         MemoryPermission required_perm) const {
+    if (len == 0) {
+        return Result<void>::Ok();
+    }
+    auto reg_res = ResolveRegion(addr, len, required_perm);
+    if (!reg_res) {
+        return reg_res.error();
+    }
+    return Result<void>::Ok();
+}
+
 } // namespace xblob::memory

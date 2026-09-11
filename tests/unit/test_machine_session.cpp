@@ -1,7 +1,9 @@
 #include "tests/fixtures/synthetic_media.hpp"
+#include "tests/fixtures/synthetic_xdvdfs.hpp"
 #include "tests/test_framework.hpp"
 #include "xblob/io/byte_source.hpp"
 #include "xblob/machine/machine_session.hpp"
+#include "xblob/machine/media_boot_pipeline.hpp"
 
 using namespace xblob;
 using namespace xblob::machine;
@@ -153,6 +155,131 @@ TEST_CASE(TestMachineSessionDeterminismAcrossRuns) {
     EXPECT_EQ(cycle1, cycle2);
     EXPECT_EQ(out1.instructions_executed, out2.instructions_executed);
     EXPECT_EQ(out1.cycles_consumed, out2.cycles_consumed);
+}
+
+TEST_CASE(TestMediaBootPipelineDirectXbe) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    auto xbe_bytes = testing::CreateValidSyntheticXbe(0x11112222, "Direct XBE Test", 1);
+    xbe_bytes[0x1000] = 0xF4; // HLT
+    auto source = std::make_shared<MemoryByteSource>(xbe_bytes);
+
+    auto prep_res = session->PrepareMedia(source);
+    EXPECT_TRUE(prep_res.has_value());
+    EXPECT_EQ(session->state(), MachineState::Prepared);
+    EXPECT_TRUE(session->media_source() != nullptr);
+    EXPECT_TRUE(session->vfs() != nullptr);
+
+    // Step session executing HLT
+    auto step_res = session->Step(1);
+    EXPECT_TRUE(step_res.has_value());
+    EXPECT_EQ(step_res->cpu_result, cpu::StepResult::Halted);
+}
+
+TEST_CASE(TestMediaBootPipelineXdvdfsTrimmedIso) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    auto xbe_bytes = testing::CreateValidSyntheticXbe(0x33334444, "Disc Game", 1);
+    xbe_bytes[0x1000] = 0xF4; // HLT
+
+    auto img = testing::BuildValidTrimmedXdvdfsImage({
+        {"DEFAULT.XBE", xbe_bytes},
+        {"SYSTEM/GAME.CFG", {'1', '2', '3'}},
+    });
+    auto source = std::make_shared<MemoryByteSource>(std::move(img));
+
+    auto prep_res = session->PrepareMedia(source);
+    EXPECT_TRUE(prep_res.has_value());
+    EXPECT_EQ(session->state(), MachineState::Prepared);
+    EXPECT_TRUE(session->media_source() != nullptr);
+    EXPECT_TRUE(session->vfs() != nullptr);
+    EXPECT_TRUE(session->vfs()->IsMounted("D"));
+
+    // Query file on disc through session's VFS
+    auto query_res = session->vfs()->QueryPath("D:\\system\\game.cfg");
+    EXPECT_TRUE(query_res.has_value());
+    EXPECT_EQ(query_res->size, 3ULL);
+
+    // Step session executing HLT
+    auto step_res = session->Step(1);
+    EXPECT_TRUE(step_res.has_value());
+    EXPECT_EQ(step_res->cpu_result, cpu::StepResult::Halted);
+}
+
+TEST_CASE(TestMediaBootPipelineNonXdvdfsIsoRejectionRollback) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    // Standard non-XDVDFS dummy source
+    std::vector<u8> dummy_iso(64 * 2048, 0x00);
+    auto source = std::make_shared<MemoryByteSource>(dummy_iso);
+
+    auto prep_res = session->PrepareMedia(source);
+    EXPECT_FALSE(prep_res.has_value());
+    EXPECT_EQ(prep_res.error().code, ErrorCode::UnknownFormat);
+    // Session state MUST remain Created (no leaked state)
+    EXPECT_EQ(session->state(), MachineState::Created);
+}
+
+TEST_CASE(TestMediaBootPipelineMissingDefaultXbeRejectionRollback) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    // Valid XDVDFS disc image, but missing default.xbe
+    auto img = testing::BuildValidTrimmedXdvdfsImage({
+        {"OTHER.XBE", {'X', 'B', 'E', '1'}},
+    });
+    auto source = std::make_shared<MemoryByteSource>(std::move(img));
+
+    auto prep_res = session->PrepareMedia(source);
+    EXPECT_FALSE(prep_res.has_value());
+    EXPECT_EQ(prep_res.error().code, ErrorCode::FileNotFound);
+    // Session state MUST remain Created
+    EXPECT_EQ(session->state(), MachineState::Created);
+}
+
+TEST_CASE(TestMediaBootPipelineRawRedumpIso) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    auto xbe_bytes = testing::CreateValidSyntheticXbe(0x99990000, "Redump Disc", 1);
+    xbe_bytes[0x1000] = 0xF4; // HLT
+
+    auto source = testing::CreateSyntheticRawXdvdfsSource({
+        {"DEFAULT.XBE", xbe_bytes},
+    });
+
+    auto prep_res = session->PrepareMedia(source);
+    EXPECT_TRUE(prep_res.has_value());
+    EXPECT_EQ(session->state(), MachineState::Prepared);
+    EXPECT_TRUE(session->vfs() != nullptr);
+    EXPECT_TRUE(session->vfs()->IsMounted("D"));
+
+    auto step_res = session->Step(1);
+    EXPECT_TRUE(step_res.has_value());
+    EXPECT_EQ(step_res->cpu_result, cpu::StepResult::Halted);
+}
+
+TEST_CASE(TestMediaBootPipelineCorruptedXbeRollback) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    // Valid magic XBEH but truncated/corrupt header
+    std::vector<u8> corrupt_xbe = {'X', 'B', 'E', 'H', 0x00, 0x00, 0x00, 0x00};
+    auto source = std::make_shared<MemoryByteSource>(std::move(corrupt_xbe));
+
+    auto prep_res = session->PrepareMedia(source);
+    EXPECT_FALSE(prep_res.has_value());
+    // Session state MUST remain Created
+    EXPECT_EQ(session->state(), MachineState::Created);
 }
 
 int main() {

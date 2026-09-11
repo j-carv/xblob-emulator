@@ -68,3 +68,58 @@ jobs:
 
       - name: Run Tests (CTest)
         run: ctest --test-dir build --output-on-failure -C Release
+
+  sanitizers:
+    name: Sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang
+      - name: Configure CMake with Sanitizers
+        run: |
+          export CC=clang
+          export CXX=clang++
+          cmake -B build_san -S . -DCMAKE_BUILD_TYPE=Debug -DXBLOB_ENABLE_SANITIZERS=ON -DXBLOB_WARNINGS_AS_ERRORS=ON -DXBLOB_BUILD_TESTS=ON -G Ninja
+      - name: Build Project
+        run: cmake --build build_san
+      - name: Run Tests (CTest)
+        run: ctest --test-dir build_san --output-on-failure
+
+  desktop:
+    name: Desktop Frontend & Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Build C API static library
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target xblob_c_api
+      - name: Desktop Rust Checks
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy -- -D warnings
+          cargo test --locked
+      - name: Desktop React Checks
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build

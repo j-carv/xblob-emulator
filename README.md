@@ -4,12 +4,14 @@
 
 ---
 
-### Estado Atual do Projeto: Marco 4 (Execução IA-32 Estendida, Exceções, Kernel HLE Clean-Room e ABI 1.2)
+### Estado Atual do Projeto: Marco 6 (Sistema de Arquivos XDVDFS, VFS Virtual, Boot de Mídia e Kernel File Services HLE)
 
 > [!IMPORTANT]
-> **Aviso de Estado Real**: O projeto encontra-se atualmente no **Marco 4**. 
-> **Este marco NUNCA executa jogos comerciais, títulos completos nem o kernel oficial do console.**
-> O código implementado neste estágio provê: decodificador/executor IA-32 modular com pipeline transacional (`libs/cpu`), exceções arquiteturais (#UD/#GP/#PF) e tabela IDT, Kernel HLE isolado e limpo (`libs/kernel`) com heap determinístico, escalonador cooperativo de threads e sincronização, buffer circular limitado de rastreamento de eventos (`libs/machine`), ABI C 1.2 retrocompatível (`libs/c_api`), wrapper Rust seguro RAII, e interface desktop com runner puramente diagnóstico e orçamentos obrigatórios, sem controles de execução de jogos comerciais ou alegações de compatibilidade.
+> **Aviso de Estado Real**: O projeto encontra-se atualmente no **Marco 6**. 
+> A meta final do **xblob** é carregar e executar/jogar arquivos `.xbe`, `.iso` e `.xiso` fornecidos legalmente pelo usuário.
+> No **marco atual**, o emulador monta imagens XDVDFS reais (raw e trimmed/XISO), navega por seus diretórios de forma bounded e case-insensitive, localiza o inicializador `default.xbe`, carrega executáveis de forma transacional via pipeline com rollback e atende chamadas de serviços de arquivos do kernel. **Ainda não declara suporte a gameplay comercial completo** (ações interativas de jogo como botões "Play" aguardam a conclusão de pipelines funcionais dos próximos marcos).
+> Todo o conteúdo do usuário permanece estritamente local.
+> O repositório e os testes NUNCA incluem, distribuem ou dependem de jogos comerciais, BIOS, chaves criptográficas, firmwares ou headers proprietários.
 
 Para detalhes sobre o roadmap e as fronteiras de todos os subsistemas planejados, consulte [ARCHITECTURE.md](ARCHITECTURE.md). Para proveniência clean-room e fontes públicas, consulte [docs/CLEANROOM_PROVENANCE.md](docs/CLEANROOM_PROVENANCE.md). Para regras normativas de contribuição e governança de código, consulte [AGENTS.md](AGENTS.md).
 
@@ -17,16 +19,20 @@ Para detalhes sobre o roadmap e as fronteiras de todos os subsistemas planejados
 
 ## Recursos Implementados
 
+- **Sistema de Arquivos XDVDFS e Streaming (`libs/io`, `libs/formats`)**: Leitura sob demanda via `SubrangeByteSource` sem carregar a ISO inteira na memória RAM; parser iterativo defensivo de árvore binária de diretórios (BST) com detecção de ciclos, orçamentos de nós/profundidade e suporte a imagens raw (setor 32 da partição) e trimmed/XISO (setor 32/0).
+- **Sistema de Arquivos Virtual VFS (`libs/vfs`)**: Normalização canônica de caminhos Xbox (`D:\`), prevenção rigorosa contra path traversal (`..`, caracteres inválidos), tabela de handles geracionais com tag de 32 bits contra use-after-free e semântica estritamente somente leitura (`IsReadOnly`).
+- **Pipeline de Boot de Mídia Transacional (`libs/machine`)**: Detecção orientada a conteúdo (XBE direto ou disco XDVDFS), localização case-insensitive de `default.xbe`, carregamento em duas fases (`Plan` e `Apply`) e rollback garantido em caso de erro sem poluir o estado da sessão.
+- **Serviços de Arquivo do Kernel HLE (`libs/kernel`)**: Implementação clean-room dos ordinais 190 (`NtCreateFile`), 219 (`NtReadFile`), 256 (`NtWriteFile`), 224 (`SetFilePointer`), 18 (`NtClose`), 217 (`NtQueryInformationFile`), 216 (`NtQueryDirectoryFile`), com validação atômica de memória guest e rejeição explícita de I/O assíncrono com `STATUS_NOT_SUPPORTED`.
+- **ABI C Estável 1.4 (`libs/c_api`)**: Interface C versionada (1.4.0) retrocompatível com 1.0–1.3, expondo capacidades `XBLOB_CAPABILITY_XDVDFS_VFS` e `XBLOB_CAPABILITY_MEDIA_BOOT`, estruturas `xblob_boot_report_t` e navegador VFS paginado two-call.
+- **Desktop Tauri v2 & React 19 (`apps/desktop`)**: Navegador de arquivos XDVDFS acessível (WCAG 2.2 AA) e paginado (`XdvdfsBrowser`), painel "Preparar mídia" com separação estrita em relação ao estado de gameplay interativo, e shell Rust limitado a FFI/IPC com RAII.
 - **I/O Seguro e Parsing Orientado a Cursor (`libs/common`, `libs/io`)**: Leituras binárias com checagem de faixas e prevenção contra overflow aritmético.
 - **Inspeção de Executáveis XBE e Detecção ISO/XISO (`libs/formats`)**: Validação estrutural de cabeçalhos mágicos, limites de seções e contêineres de disco.
 - **Barramento Convidado e MMIO (`libs/bus`, `libs/memory`)**: Barramento desacoplado com roteamento de dispositivos, bancos de registradores sintéticos e adaptador MMIO.
-- **Paginação Virtual IA-32 4 KiB (`libs/memory`)**: Tradução de endereços virtuais via PDE/PTE (Two-Level Page Table), registros de controle CR0 (PG/WP) e CR3 (Page Directory Base), CPL (Ring 0 / Ring 3), TLB configurável e códigos arquiteturais de Page Fault (#PF).
+- **Pagina\u00e7\u00e3o Virtual IA-32 4 KiB (`libs/memory`)**: Tradução de endereços virtuais via PDE/PTE (Two-Level Page Table), registros de controle CR0 (PG/WP) e CR3 (Page Directory Base), CPL (Ring 0 / Ring 3), TLB configurável e códigos arquiteturais de Page Fault (#PF).
 - **Loader XBE Transacional em Duas Fases (`libs/loader`)**: Separação estrita entre planejamento (`Plan`) e aplicação (`Apply`). Toda falha durante carregamento reverte atomicamente as páginas virtuais mapeadas, garantindo rollback sem deixar estado parcial na máquina.
 - **Kernel HLE Clean-Room (`libs/kernel`)**: Registro de ordinais com allowlist estrita, despachante de thunks sintéticos com leitura checked de argumentos guest, coletor sanitizado de depuração (`BufferedDebugSink`), heap determinístico com detecção de double-free, escalonador cooperativo de threads com IDs geracionais, e objetos de sincronização (eventos e mutexes recursivos) com filas FIFO reproduzíveis.
 - **CPU IA-32 Estendida e Transacional (`libs/cpu`)**: Pipeline em 3 fases (`Decode` -> `Validate` -> `Commit`), decodificação completa ModR/M e SIB com limite de 15 bytes, abstração de operandos puramente virtuais sem ponteiros host, instruções de Dados (`MOV`, `LEA`), Stack (`PUSH`, `POP`, `PUSHF`, `POPF`, `CALL`, `RET`), ALU (`ADD`, `ADC`, `SUB`, `SBB`, `INC`, `DEC`, `CMP`, `AND`, `OR`, `XOR`, `TEST`) com cálculo exato de flags, Branches condicionais e incondicionais, exceções arquiteturais (`#UD`, `#GP`, `#PF`), IDTR com Interrupt/Trap Gates 32-bit e frames same-ring atômicos.
-- **Sessão Determinística de Máquina e Rastreamento (`libs/machine`)**: Máquina de estados explícita (`Created`, `Prepared`, `Paused`, `Faulted`, `Stopped`) integrando todos os subsistemas, orçamentos finitos de instrução e ciclo, e buffer circular de rastreamento (`TraceRingBuffer`) com métricas de eventos retidos e descartados.
-- **ABI C Estável 1.2 (`libs/c_api`)**: Interface `extern "C"` versionada (1.2.0) com suporte a execução diagnóstica, query de trace e DTOs com verificação de tamanho de estrutura garantindo retrocompatibilidade com consumidores 1.0 e 1.1.
-- **Desktop Tauri v2 & React 19 (`apps/desktop`)**: Shell Rust limitado a FFI/IPC com RAII estrito, e interface React com aba diagnóstica e runner com orçamentos obrigatórios, sem botões de Play/Run para mídia geral.
+- **Sessão Determinística de Máquina e Rastreamento (`libs/machine`)**: Máquina de estados explícita (`Created`, `Prepared`, `Paused`, `Faulted`, `Stopped`) integrando todos os subsistemas, orçamentos finitos de instrução e ciclo, interrupções de GPU e buffer circular de rastreamento (`TraceRingBuffer`).
 - **CLI de Diagnóstico (`apps/inspect`)**: Interface de terminal para inspecionar binários e relatar metadados ou códigos estruturados de erro (`xblob-inspect`).
 - **Memória Física e Espaço de Endereçamento (`libs/memory`)**:
   - Alocação de RAM guest zero-inicializada para 64 MiB (varejo) ou 128 MiB (devkit).
@@ -87,14 +93,13 @@ ctest --preset asan-ubsan --output-on-failure
 
 ---
 
-## Arquitetura da Interface Desktop Futura
+## Arquitetura da Interface Desktop (Implementada)
 
 Conforme governança definida em [AGENTS.md](AGENTS.md):
-- **Frontend / UI**: Interface rica, moderna e responsiva construída em **React + TypeScript**.
-- **Shell Desktop**: **Tauri v2**, empacotando o aplicativo com segurança e baixo consumo de recursos nativos.
-- **Núcleo de Emulação**: Motor de emulação escrito exclusivamente em **C/C++20**.
-- **Ponte de Comunicação**: O núcleo em C/C++ expõe uma **ABI C estável** (`extern "C"`). O código Rust no Tauri v2 atua estritamente como adaptador de FFI/IPC, sendo expressamente proibido de conter lógica de emulação ou regras de domínio.
-- *Nota: A implementação da UI desktop ocorrerá em marcos futuros, após consolidação dos subsistemas de emulação.*
+- **Frontend / UI**: Interface moderna, acessível (WCAG 2.2 AA) e responsiva construída em **React 19 + TypeScript**, com abas de inspeção, diagnósticos e preview de framebuffer.
+- **Shell Desktop**: **Tauri v2**, empacotando o aplicativo com segurança, CSP rigoroso (`connect-src 'none'`) e baixo consumo de recursos nativos.
+- **Núcleo de Emulação**: Motor escrito exclusivamente em **C/C++20**.
+- **Ponte de Comunicação**: O núcleo em C/C++ expõe uma **ABI C estável** (`extern "C"`, versão 1.3). O código Rust no Tauri v2 atua estritamente como adaptador RAII de FFI/IPC, sendo expressamente proibido de conter lógica de emulação ou regras de domínio.
 
 ---
 

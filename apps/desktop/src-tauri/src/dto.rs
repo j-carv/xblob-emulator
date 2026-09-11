@@ -75,6 +75,60 @@ pub struct MachinePrepareDiagnosticDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GpuFrameMetadataDto {
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+    pub pixel_format: u32,
+    pub sequence_number: u64,
+    pub frame_cycle: u64,
+    pub buffer_size: u32,
+    pub is_valid: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BootReportDto {
+    pub media_type: String,
+    pub default_xbe_path: String,
+    pub title_name: String,
+    pub title_id: u32,
+    pub title_id_hex: String,
+    pub entry_point: u32,
+    pub entry_point_hex: String,
+    pub section_count: u32,
+    pub media_size_bytes: u64,
+    pub is_bootable: bool,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsEntryDto {
+    pub name: String,
+    pub size: u64,
+    pub is_directory: bool,
+    pub attributes: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VfsDirectoryPageDto {
+    pub total_count: u32,
+    pub offset: u32,
+    pub limit: u32,
+    pub entries: Vec<VfsEntryDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuFrameSnapshotDto {
+    pub metadata: GpuFrameMetadataDto,
+    pub pixels_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppErrorDto {
     pub code: String,
     pub message: String,

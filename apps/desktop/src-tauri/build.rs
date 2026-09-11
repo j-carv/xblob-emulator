@@ -66,6 +66,22 @@ fn main() {
             dst.display()
         );
         println!(
+            "cargo:rustc-link-search=native={}/build/libs/gpu",
+            dst.display()
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/build/libs/pci",
+            dst.display()
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/build/libs/kernel",
+            dst.display()
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/build/libs/vfs",
+            dst.display()
+        );
+        println!(
             "cargo:rustc-link-search=native={}/build/libs/common",
             dst.display()
         );
@@ -73,6 +89,10 @@ fn main() {
 
     println!("cargo:rustc-link-lib=static=xblob_c_api");
     println!("cargo:rustc-link-lib=static=xblob_machine");
+    println!("cargo:rustc-link-lib=static=xblob_vfs");
+    println!("cargo:rustc-link-lib=static=xblob_gpu");
+    println!("cargo:rustc-link-lib=static=xblob_pci");
+    println!("cargo:rustc-link-lib=static=xblob_kernel");
     println!("cargo:rustc-link-lib=static=xblob_loader");
     println!("cargo:rustc-link-lib=static=xblob_cpu");
     println!("cargo:rustc-link-lib=static=xblob_memory");

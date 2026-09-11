@@ -14,6 +14,16 @@ std::string_view ErrorCodeToString(ErrorCode code) noexcept {
         return "Erro de E/S";
     case ErrorCode::UnexpectedEof:
         return "Fim prematuro de arquivo";
+    case ErrorCode::InvalidPath:
+        return "Caminho inválido ou tentativa de traversal";
+    case ErrorCode::NotADirectory:
+        return "Componente de caminho não é um diretório";
+    case ErrorCode::IsADirectory:
+        return "Alvo é um diretório e não um arquivo";
+    case ErrorCode::InvalidHandle:
+        return "Handle de arquivo/diretório inválido ou stale";
+    case ErrorCode::ReadOnlyFileSystem:
+        return "Sistema de arquivos montado como somente leitura";
     case ErrorCode::InvalidMagic:
         return "Assinatura mágica inválida";
     case ErrorCode::UnknownFormat:

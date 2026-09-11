@@ -6,16 +6,16 @@ Este documento descreve a organização arquitetural do emulador **xblob**, disc
 
 ## 1. Estado Atual Implementado vs. Arquitetura-Alvo
 
-| Dimensão | Estado Atual (Marco 4: Execução IA-32 Estendida, Exceções, Kernel HLE e ABI 1.2) | Arquitetura-Alvo Completa |
+| Dimensão | Estado Atual (Marco 6: Sistema de Arquivos XDVDFS, VFS Virtual, Boot de Mídia e Kernel File Services HLE) | Arquitetura-Alvo Completa |
 | :--- | :--- | :--- |
-| **Escopo** | I/O seguro, inspeção defensiva de mídias, barramento convidado, paginação IA-32 de 4 KiB, loader transacional, CPU IA-32 transacional com ALU/Stack/Branch, IDT e exceções, Kernel HLE isolado, trace buffer limitado, ABI C 1.2 e UI diagnóstica | Emulação completa de hardware e software do console Xbox original (2001) |
-| **Execução de Código** | Execução diagnóstica de instruções IA-32 sintéticas com orçamentos determinísticos. **Nenhuma execução de jogos comerciais, kernel oficial ou títulos completos** | CPU x86 (intérprete de referência e JIT dinâmico), HLE de Kernel e LLE seletivo |
-| **Subsistemas Ativos** | `libs/common`, `libs/bus`, `libs/io`, `libs/formats`, `libs/memory`, `libs/core`, `libs/cpu`, `libs/kernel`, `libs/loader`, `libs/machine`, `libs/c_api`, `apps/inspect`, `apps/desktop` | Frontend/UI, Scheduler, CPU, MMU, NV2A, APU/MCPX, USB/Input, PCI, Kernel HLE, FATX |
-| **Segurança e I/O** | Cursores sem casts, limites estritos de faixas, isolamento de RAM guest, validação de permissões, paginação protegida, rollback atômico do loader e sem ponteiros host em operandos da CPU | Isolamento total de processos, sandboxing de I/O, verificação de integridade |
-| **Suporte a Mídia** | Executáveis XBE e imagens ISO/XISO estruturalmente inspecionáveis e executáveis XBE sintéticos executáveis via perfil explícito de diagnóstico | Discos físicos, dumps ISO/XISO, partição de HDD FATX, cartões de memória |
+| **Escopo** | I/O seguro, streaming subrange, leitor XDVDFS defensivo, VFS read-only com handles geracionais, pipeline de boot por conteúdo com rollback, barramento convidado, cabeçalho PCI Type 0, paginação IA-32 de 4 KiB, loader transacional, CPU IA-32 transacional, Kernel HLE com serviços de arquivos, GPU NV2A com superfície linear RGBA8 e pushbuffer, trace buffer, ABI C 1.4 e UI desktop com navegador VFS e preparação de mídia | Emulação completa de hardware e software do console Xbox original (2001) para execução local de mídias fornecidas pelo usuário (.xbe, .iso, .xiso) |
+| **Execução de Código** | Execução diagnóstica de instruções IA-32 sintéticas com orçamentos determinísticos, preparação transacional de executáveis XBE e imagens de disco ISO/XISO, serviços de arquivos HLE e comandos 2D via pushbuffer NV2A. **A emulação interativa de jogos comerciais é a meta final do projeto e ainda não executa neste marco** | CPU x86 (intérprete de referência e JIT dinâmico), HLE de Kernel e LLE seletivo para jogos do usuário |
+| **Subsistemas Ativos** | `libs/common`, `libs/bus`, `libs/pci`, `libs/gpu`, `libs/io`, `libs/formats`, `libs/vfs`, `libs/memory`, `libs/core`, `libs/cpu`, `libs/kernel`, `libs/loader`, `libs/machine`, `libs/c_api`, `apps/inspect`, `apps/desktop` | Frontend/UI, Scheduler, CPU, MMU, NV2A, APU/MCPX, USB/Input, PCI, Kernel HLE, FATX, VFS |
+| **Segurança e I/O** | Streaming subrange sem ler ISO inteira, parser iterativo com orçamentos estritos e proteção contra ciclos, bloqueio total de path traversal (`..`), handles geracionais, atomicidade com rollback e buffers guest transacionais | Isolamento total de processos, sandboxing de I/O, verificação de integridade |
+| **Suporte a Mídia** | Executáveis XBE e imagens de disco ISO/XISO (raw e trimmed) montáveis via XDVDFS, com localização automática de `default.xbe`, preparação de sessão e navegação paginada | Discos físicos, dumps ISO/XISO, partição de HDD FATX, cartões de memória |
 
 > [!IMPORTANT]
-> **Aviso de Honestidade Técnica**: O projeto encontra-se atualmente no **Marco 4**. Nenhuma tentativa de carregar jogos proprietários ou executar o kernel oficial é realizada. O escopo atual limita-se à fundação de execução e Kernel HLE clean-room para fixtures diagnósticas e testes de conformidade.
+> **Aviso de Honestidade Técnica**: O projeto encontra-se atualmente no **Marco 6**. A meta final do emulador é carregar e executar títulos `.xbe`, `.iso` e `.xiso` fornecidos legalmente pelo usuário. No marco atual, o emulador monta discos XDVDFS, navega em seus arquivos, prepara sessões de máquina de forma transacional e atende chamadas de I/O do kernel convidado. **Ainda não executa jogos comerciais**, limitando-se à execução diagnóstica de fixtures sintéticas, validação estática de formatos e teste da cadeia de boot e gráficos. O repositório e os testes jamais distribuem ou dependem de jogos, BIOS, chaves, firmware ou SDKs proprietários.
 
 ---
 
@@ -77,18 +77,18 @@ Este documento descreve a organização arquitetural do emulador **xblob**, disc
 ```
 [apps/desktop] (React 19 + Tauri v2 Shell FFI/IPC)
       |
-      v (C ABI 1.1)
+      v (C ABI 1.3)
 [libs/c_api]
       |
       v
 [libs/machine] (MachineSession: Created, Prepared, Paused, Faulted, Stopped)
-      +---------------+---------------+---------------+
-      |               |               |               |
-      v               v               v               v
-[libs/loader]    [libs/cpu]      [libs/core]     [libs/bus]
-      |               |                               |
-      +-------+-------+                               v
-              v                                [libs/memory]
+      +---------------+---------------+---------------+---------------+---------------+
+      |               |               |               |               |               |
+      v               v               v               v               v               v
+[libs/loader]    [libs/cpu]      [libs/kernel]   [libs/gpu]      [libs/pci]      [libs/core]
+      |               |               |               |               |
+      +-------+-------+---------------+               v               v
+              v                                [libs/bus] <-----------+
        [libs/memory] <--------------------------------+
   (VirtualMemory 4KiB & AddressSpace)
               |
@@ -99,12 +99,15 @@ Este documento descreve a organização arquitetural do emulador **xblob**, disc
 As dependências são estritamente unidirecionais:
 - `xblob_common`: Raiz fundamental de tipos, erros e aritmética segura.
 - `xblob_bus`: Barramento convidado, dispositivos desacoplados, registradores sintéticos. Depende apenas de `xblob_common`.
+- `xblob_pci`: Barramento PCI, cabeçalho Type 0, registro determinístico e BAR sizing/routing. Depende de `xblob_common` e `xblob_bus`.
+- `xblob_gpu`: Dispositivo NV2A, registradores permitidos, superfícies RGBA8 e processador de pushbuffer. Depende de `xblob_common`, `xblob_bus` e `xblob_pci`.
 - `xblob_memory`: Espaço físico (`AddressSpace`, `Ram`), MMIO tipado, paginação virtual IA-32 (`VirtualMemory`) com TLB e tradução PDE/PTE de 4 KiB, e adaptador de barramento. Depende de `xblob_common` e `xblob_bus`.
 - `xblob_core`: Scheduler determinístico e relógio monotônico. Depende apenas de `xblob_common`.
 - `xblob_cpu`: CPU IA-32 de referência (GPRs, EIP, EFLAGS, CR0/CR3/CPL, instruções, runner com orçamento). Depende de `xblob_common` e `xblob_memory`.
+- `xblob_kernel`: Kernel HLE clean-room com registro de ordinais, heap determinístico e threads. Depende de `xblob_common`, `xblob_memory`, `xblob_cpu` e `xblob_core`.
 - `xblob_loader`: Planejamento puro e carregamento transacional de executáveis XBE com rollback atômico. Depende de `xblob_common`, `xblob_formats` e `xblob_memory`.
-- `xblob_machine`: Coordenador determinístico de sessão de máquina (<150 linhas/arquivo). Depende de `xblob_common`, `xblob_bus`, `xblob_core`, `xblob_memory`, `xblob_cpu` e `xblob_loader`.
-- `xblob_c_api`: ABI C estável `extern "C"` versionada (1.1). Depende de `xblob_common`, `xblob_formats` e `xblob_machine`.
+- `xblob_machine`: Coordenador determinístico de sessão de máquina integrando barramentos, CPU, kernel, PCI e GPU. Depende de `xblob_common`, `xblob_bus`, `xblob_core`, `xblob_memory`, `xblob_cpu`, `xblob_kernel`, `xblob_loader`, `xblob_pci` e `xblob_gpu`.
+- `xblob_c_api`: ABI C estável `extern "C"` versionada (1.3). Depende de `xblob_common`, `xblob_formats` e `xblob_machine`.
 
 ---
 
@@ -164,8 +167,27 @@ As dependências são estritamente unidirecionais:
 - `CpuContext`: Estado arquitetural IA-32 (registradores gerais `EAX`..`EDI`, `EIP`, `EFLAGS` com invariante forçado do bit 1 reservado, seletores de segmento `CS`..`GS`, registros CR0 e CR3).
 - Ciclo de vida (`Running`, `Halted`, `Faulted`).
 - Fetch transacional sem mutação parcial em caso de instrução truncada ou falha de acesso à memória.
-- Conjunto inicial de instruções (`NOP`, `HLT`, `MOV r32, imm32`, `ADD EAX, imm32`, `SUB EAX, imm32`, `JMP rel8`, `JMP rel32`).
+- Conjunto inicial e estendido de instruções (ALU, Stack, Mov, Branches) e tratamento de exceções arquiteturais (#UD, #GP, #PF).
 - Runner determinístico com orçamentos de instruções e ciclos.
+
+### 3.10. `libs/kernel`
+- Kernel HLE clean-room com despachante de thunks por ordinais permitidos (`ExportRegistry`).
+- Coletor sanitizado de logs (`BufferedDebugSink`).
+- Heap determinístico com detecção de double-free.
+- Escalonador cooperativo de threads e objetos de sincronização (eventos e mutexes recursivos) com filas FIFO reproduzíveis.
+
+### 3.11. `libs/pci`
+- Abstração do barramento PCI (Peripheral Component Interconnect) com endereçamento BDF.
+- Cabeçalho de configuração Type 0 com acessos little-endian tipados de 8, 16 e 32 bits.
+- Suporte a Base Address Registers (BARs) com protocolo de dimensionamento via `0xFFFFFFFF` e detecção de colisões.
+- Gating estrito de transações MMIO através do bit `memory_space` no registrador `command`.
+
+### 3.12. `libs/gpu`
+- Dispositivo gráfico NV2A com allowlist de registradores (`PMC`, `PBUS`, `PFIFO`, `PGRAPH`, `PCRTC`).
+- Superfície linear RGBA8 desacoplada de janelas nativas ou APIs gráficas do host.
+- Decodificador de pushbuffer em métodos e pacotes tipados.
+- Processador de comandos 2D determinístico (`CLEAR`, `FILL_RECT`, `FLIP_SURFACE`) com orçamentos estritos de ciclos e pacotes.
+- Geração determinística de interrupções de GPU (`GpuInterruptSource`) integradas ao barramento e scheduler.
 
 ---
 
@@ -221,7 +243,7 @@ A fundação desktop do xblob conecta a interface visual ao motor de preservaç�
 1. **React UI**: Puramente declarativa, WCAG 2.2 AA compliant (contraste >= 4.5:1, foco visível com offset, suporte a leitor de tela e `prefers-reduced-motion`), sem acesso a filesystem direto.
 2. **Rust Shell**: Adaptador fino e DTO translator; zero parsing ou lógica de mídia reescrita em Rust.
 3. **C ABI**: Fronteira C11 estável e portável; garante que clientes futuros (Python, bindings nativos) possam consumir o núcleo xblob sem quebrar compatibilidade binária.
-4. **Escopo Legal & Técnico**: A aplicação é estritamente uma ferramenta de inspeção e preservação histórica de mídia. Nenhuma ação de execução/emulação de jogos comerciais é permitida ou oferecida.
+4. **Escopo Legal & Técnico**: A meta final do produto é carregar e executar títulos `.xbe`, `.iso` e `.xiso` fornecidos legalmente pelo usuário. O repositório e os binários distribuídos são 100% livres de software proprietário (sem BIOS, sem chaves, sem jogos distribuídos). No marco atual, a execução opera em modo diagnóstico com fixtures sintéticas; o suporte interativo a jogos comerciais ainda não executa nesta versão, aguardando validação de pipelines de emulação futuros.
 
 ---
 
@@ -237,20 +259,31 @@ A fundação desktop do xblob conecta a interface visual ao motor de preservaç�
   - `libs/core`: Scheduler determinístico com relógio monotônico e controle de eventos.
   - `libs/cpu`: Estado IA-32, fetch transacional, subconjunto inicial de instruções e runner com orçamentos.
   - Testes unitários abrangentes e teste de integração determinístico com dupla execução idêntica.
-- **Marco 3: Barramentos, MMU e Carregador Inicial de Memória**
-  - Mapeamento de paginação de hardware de 4 KB.
-  - Barramento PCI host-to-PCI e configuração de dispositivos.
-  - Carregador inicial de seções XBE para memória virtual guest.
-- **Marco 4: Kernel HLE Fundamental e Serviços de Sistema**
-  - Implementação inicial de exports de `xboxkrnl.exe` (threads, sincronização, heap, DbgPrint).
-  - Execução controlada de pequenos programas de diagnóstico em memória.
-- **Marco 5: GPU NV2A Mínima e Pushbuffer**
-  - FIFO Pushbuffer da GPU NV2A e processamento de comandos.
-  - Apresentação de buffers de quadro no host.
-- **Marco 6: Sistema de Arquivos FATX, Entradas e Áudio MCPX**
-  - Parser completo de volumes FATX para o VFS.
+- **Marco 3: MMU, Paginação 4 KiB e Loader XBE Transacional (Concluído)**
+  - Mapeamento de paginação IA-32 de 4 KiB (PDE/PTE) com TLB e suporte a CR0/CR3.
+  - Carregador transacional em duas fases (`Plan` e `Apply`) com rollback atômico.
+  - Sessão determinística de máquina (`libs/machine`).
+- **Marco 4: Kernel HLE Fundamental, CPU Estendida e Exceções (Concluído)**
+  - Registro de ordinais com allowlist estrita e Kernel HLE clean-room (`libs/kernel`).
+  - Pipeline CPU IA-32 em 3 fases, decodificação ModR/M/SIB, ALU completa, Stack, Branches e exceções (#UD, #GP, #PF).
+  - Shell desktop inicial em React 19 + Tauri v2 via ABI C 1.2.
+- **Marco 5: Barramento PCI, Fundações da GPU NV2A e Framebuffer (Concluído)**
+  - Barramento PCI com cabeçalho Type 0, endereçamento BDF e BAR sizing/routing (`libs/pci`).
+  - Dispositivo NV2A, registradores permitidos, superfície RGBA8 e decodificador/processador de pushbuffer 2D (`libs/gpu`).
+  - ABI C 1.3 com capacidades gráficas e extração de snapshots de quadros (`libs/c_api`).
+  - Visualização de display via Canvas no desktop com elegibilidade de testes sintéticos (`apps/desktop`).
+- **Marco 6: Sistema de Arquivos XDVDFS, VFS Virtual, Boot de Mídia e Kernel File Services HLE (Concluído)**
+  - `libs/io`: `SubrangeByteSource` imutável e seguro para streaming de mídia sem carregar ISOs completas na memória.
+  - `libs/formats`: Leitor XDVDFS defensivo, parsing iterativo de árvores de diretório com detecção de ciclos e bounds rígidos, suporte a ISO raw e trimmed/XISO.
+  - `libs/vfs`: Virtual File System com suporte a caminhos Xbox (`D:\`), prevenção total de path traversal (`..`), handles geracionais anti-use-after-free e volumes estritamente read-only.
+  - `libs/machine`: `MediaBootPipeline` por conteúdo (XBE ou XDVDFS), localização de `default.xbe`, transacionalidade com rollback e integração de ownership à `MachineSession`.
+  - `libs/kernel`: Módulo `file_services` com NtCreateFile, NtReadFile, NtWriteFile, SetFilePointer, NtClose, NtQueryInformationFile, NtQueryDirectoryFile, validação prévia de buffers e rejeição de I/O assíncrono com `STATUS_NOT_SUPPORTED`.
+  - `libs/c_api`: ABI C 1.4 retrocompatível, novas capacidades e navegador VFS paginado two-call.
+  - `apps/desktop`: Componente React `XdvdfsBrowser` acessível (WCAG 2.2 AA) e paginado, e fluxo dedicado "Preparar mídia" no `MediaBootPanel`.
+- **Marco 7: Sistema de Arquivos FATX, Entradas USB e Áudio MCPX (Próximo)**
+  - Parser de partição e sistemas de arquivos FATX para o VFS.
   - Emulação de controlador USB Xbox (gamepads).
-  - Áudio estéreo básico MCPX / AC97.
-- **Marco 7: Interface Desktop Moderna e JIT Dinâmico**
-  - Frontend desktop React + Tauri v2 integrado ao núcleo via C ABI.
+  - Áudio básico MCPX / AC97.
+- **Marco 8: Pipeline de Execução Completo e JIT Dinâmico**
+  - Pipeline de execução unificada para carregar e rodar jogos comerciais fornecidos pelo usuário.
   - Compilador JIT x86-para-ARM64 / x86-para-x86_64.

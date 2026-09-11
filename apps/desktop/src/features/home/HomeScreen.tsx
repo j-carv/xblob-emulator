@@ -195,7 +195,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
 
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', fontStyle: 'italic', marginTop: 'var(--space-2)' }}>
-              Nota de escopo: xblob foca em conformidade arquitetural, ferramentas de inspeção e preservação. Não há execução ou suporte a jogos comerciais nesta versão.
+              Nota de escopo: xblob foca em conformidade arquitetural, ferramentas de inspeção e preservação. Ainda não há execução de jogos comerciais neste marco.
             </p>
           </div>
         ) : (

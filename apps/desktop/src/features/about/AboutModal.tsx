@@ -68,7 +68,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
               paddingLeft: 'var(--space-3)',
             }}
           >
-            xblob é um projeto independente voltado à pesquisa arquitetural e preservação digital. Este projeto não é afiliado, associado, autorizado, endossado ou de qualquer forma oficialmente conectado à Microsoft Corporation. O software não inclui, não distribui e não requer software proprietário ou BIOS protegida por direitos autorais. Esta versão de fundação destina-se exclusivamente à análise e inspeção de cabeçalhos e não suporta a execução interativa de jogos comerciais.
+            xblob é um projeto independente voltado à pesquisa arquitetural e preservação digital, com a meta final de carregar e executar títulos fornecidos legalmente pelo usuário. Este projeto não é afiliado, associado, autorizado, endossado ou de qualquer forma oficialmente conectado à Microsoft Corporation. O repositório não inclui, não distribui e não requer software proprietário ou BIOS protegida por direitos autorais. Esta versão de fundação destina-se à análise técnica e execução diagnóstica controlada, e ainda não executa jogos comerciais neste marco.
           </p>
         </section>
 

@@ -1,6 +1,9 @@
+#include "libs/c_api/src/c_api_internal.hpp"
 #include "tests/fixtures/synthetic_media.hpp"
+#include "tests/fixtures/synthetic_xdvdfs.hpp"
 #include "tests/test_framework.hpp"
 #include "xblob/c_api.h"
+#include "xblob/gpu/pushbuffer_types.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -9,7 +12,7 @@
 
 TEST_CASE(TestCApiVersionAndCapabilities) {
     EXPECT_EQ(xblob_get_abi_version_major(), 1u);
-    EXPECT_EQ(xblob_get_abi_version_minor(), 2u);
+    EXPECT_EQ(xblob_get_abi_version_minor(), 4u);
     EXPECT_EQ(xblob_get_abi_version_patch(), 0u);
 
     uint64_t caps = xblob_get_capabilities();
@@ -22,6 +25,10 @@ TEST_CASE(TestCApiVersionAndCapabilities) {
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_XBE_LOADER) != 0);
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_MACHINE_SESSION) != 0);
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_DIAGNOSTIC_EXECUTION) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_FRAMEBUFFER_PRESENTATION) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_NV2A_GPU) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_XDVDFS_VFS) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_MEDIA_BOOT) != 0);
 
     EXPECT_EQ(std::string(xblob_get_product_version()), "0.1.0");
     EXPECT_EQ(std::string(xblob_get_product_name()), "xblob");
@@ -65,7 +72,7 @@ TEST_CASE(TestCApiCoreInfoStructuralCompatibility) {
     info.struct_size = sizeof(xblob_core_info_t);
     EXPECT_EQ(xblob_get_core_info(&info), XBLOB_STATUS_OK);
     EXPECT_EQ(info.abi_version_major, 1u);
-    EXPECT_EQ(info.abi_version_minor, 2u);
+    EXPECT_EQ(info.abi_version_minor, 4u);
     EXPECT_EQ(info.abi_version_patch, 0u);
     EXPECT_EQ(info.capabilities, xblob_get_capabilities());
     EXPECT_EQ(std::string(info.product_name), "xblob");
@@ -378,6 +385,216 @@ TEST_CASE(TestCApiExecutionAndTrace) {
 
     xblob_machine_destroy(machine);
     std::filesystem::remove(xbe_path);
+}
+
+TEST_CASE(TestCApiFramebufferPresentationAndBounds) {
+    xblob_machine_t machine = nullptr;
+    EXPECT_EQ(xblob_machine_create(&machine), XBLOB_STATUS_OK);
+    EXPECT_TRUE(machine != nullptr);
+
+    // Null safety
+    xblob_frame_metadata_t meta{};
+    meta.struct_size = sizeof(xblob_frame_metadata_t);
+    EXPECT_EQ(xblob_machine_get_frame_metadata(nullptr, &meta), XBLOB_STATUS_ERROR_NULL_POINTER);
+    EXPECT_EQ(xblob_machine_get_frame_metadata(machine, nullptr), XBLOB_STATUS_ERROR_NULL_POINTER);
+
+    size_t inout_sz = 100;
+    std::vector<uint8_t> test_buf(100);
+    EXPECT_EQ(xblob_machine_copy_frame_pixels(nullptr, test_buf.data(), &inout_sz),
+              XBLOB_STATUS_ERROR_NULL_POINTER);
+    EXPECT_EQ(xblob_machine_copy_frame_pixels(machine, test_buf.data(), nullptr),
+              XBLOB_STATUS_ERROR_NULL_POINTER);
+
+    // Version checking
+    meta.struct_size = 0;
+    EXPECT_EQ(xblob_machine_get_frame_metadata(machine, &meta),
+              XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION);
+
+    // Initial state: no frames generated yet
+    meta.struct_size = sizeof(xblob_frame_metadata_t);
+    EXPECT_EQ(xblob_machine_get_frame_metadata(machine, &meta), XBLOB_STATUS_OK);
+    EXPECT_EQ(meta.is_valid, 0);
+    EXPECT_EQ(meta.sequence_number, 0ULL);
+    EXPECT_EQ(meta.buffer_size, 0u);
+
+    // Two-call with no frames returns 0 bytes needed
+    size_t req_sz = 999;
+    EXPECT_EQ(xblob_machine_copy_frame_pixels(machine, nullptr, &req_sz), XBLOB_STATUS_OK);
+    EXPECT_EQ(req_sz, 0u);
+
+    // Program a pushbuffer flip via machine session
+    const xblob::GuestAddr pb_addr = 0x00010000u;
+    const std::vector<xblob::u32> pb_words = {
+        (2u << 18) | xblob::gpu::kMethodClearColor,
+        0xFF00FF11u, // RGBA color (R=0x11, G=0xFF, B=0x00, A=0xFF)
+        1u,          // Clear trigger
+        (1u << 18) | xblob::gpu::kMethodFlip,
+        1u, // Flip trigger
+    };
+
+    for (std::size_t i = 0; i < pb_words.size(); ++i) {
+        EXPECT_TRUE(machine->session->address_space()
+                        .Write32(static_cast<xblob::GuestAddr>(pb_addr + i * 4), pb_words[i])
+                        .has_value());
+    }
+
+    auto pb_res =
+        machine->session->ExecutePushbuffer(pb_addr, static_cast<xblob::u32>(pb_words.size()));
+    EXPECT_TRUE(pb_res.has_value());
+
+    // Advance scheduler / run events so flip completes
+    EXPECT_TRUE(machine->session->scheduler().StepCycles(1000).has_value());
+
+    // Frame metadata should now reflect the presented frame (default 640x480, pitch 2560)
+    meta.struct_size = sizeof(xblob_frame_metadata_t);
+    EXPECT_EQ(xblob_machine_get_frame_metadata(machine, &meta), XBLOB_STATUS_OK);
+    EXPECT_EQ(meta.is_valid, 1);
+    EXPECT_EQ(meta.width, 640u);
+    EXPECT_EQ(meta.height, 480u);
+    EXPECT_EQ(meta.pitch, 2560u);
+    EXPECT_EQ(meta.buffer_size, 1228800u); // 640 * 480 * 4
+    EXPECT_EQ(meta.sequence_number, 1ULL);
+
+    // Two-call pattern: call 1 with null buffer query
+    size_t query_sz = 0;
+    EXPECT_EQ(xblob_machine_copy_frame_pixels(machine, nullptr, &query_sz), XBLOB_STATUS_OK);
+    EXPECT_EQ(query_sz, 1228800u);
+
+    // Insufficient buffer capacity: must return BUFFER_TOO_SMALL, set required size, and write no
+    // bytes
+    std::vector<uint8_t> tiny_buf(10, 0xAA);
+    size_t tiny_sz = 10;
+    EXPECT_EQ(xblob_machine_copy_frame_pixels(machine, tiny_buf.data(), &tiny_sz),
+              XBLOB_STATUS_ERROR_BUFFER_TOO_SMALL);
+    EXPECT_EQ(tiny_sz, 1228800u);
+    for (uint8_t b : tiny_buf) {
+        EXPECT_EQ(b, 0xAA);
+    }
+
+    // Full buffer copy: must succeed and copy golden pixels (RGBA 0x11, 0xFF, 0x00, 0xFF)
+    std::vector<uint8_t> full_buf(1228800, 0);
+    size_t full_sz = 1228800;
+    EXPECT_EQ(xblob_machine_copy_frame_pixels(machine, full_buf.data(), &full_sz), XBLOB_STATUS_OK);
+    EXPECT_EQ(full_sz, 1228800u);
+    EXPECT_EQ(full_buf[0], 0x11); // R
+    EXPECT_EQ(full_buf[1], 0xFF); // G
+    EXPECT_EQ(full_buf[2], 0x00); // B
+    EXPECT_EQ(full_buf[3], 0xFF); // A
+
+    xblob_machine_destroy(machine);
+}
+
+TEST_CASE(TestCApiPrepareMediaAndBootReport) {
+    xblob_machine_t machine = nullptr;
+    EXPECT_EQ(xblob_machine_create(&machine), XBLOB_STATUS_OK);
+    EXPECT_TRUE(machine != nullptr);
+
+    // Create synthetic XDVDFS image containing default.xbe
+    auto xbe_data = xblob::testing::CreateValidSyntheticXbe(0x55556666, "Media Boot Game", 1);
+    xbe_data[0x1000] = 0xF4; // HLT
+
+    auto img = xblob::testing::BuildValidTrimmedXdvdfsImage({
+        {"DEFAULT.XBE", xbe_data},
+        {"SYSTEM/CONFIG.TXT", {'O', 'K'}},
+    });
+
+    auto temp_dir = std::filesystem::temp_directory_path();
+    auto iso_path = temp_dir / "xblob_test_prepare_media.iso";
+    {
+        std::ofstream ofs(iso_path, std::ios::binary);
+        ofs.write(reinterpret_cast<const char*>(img.data()),
+                  static_cast<std::streamsize>(img.size()));
+    }
+
+    std::string path_str = iso_path.string();
+
+    // Incompatible boot report struct_size
+    xblob_boot_report_t report{};
+    report.struct_size = 12; // Too small
+    EXPECT_EQ(xblob_machine_prepare_media(machine, path_str.c_str(), path_str.size(), &report),
+              XBLOB_STATUS_ERROR_INVALID_ARGUMENT);
+
+    // Prepare media with valid report
+    report.struct_size = sizeof(xblob_boot_report_t);
+    EXPECT_EQ(xblob_machine_prepare_media(machine, path_str.c_str(), path_str.size(), &report),
+              XBLOB_STATUS_OK);
+
+    EXPECT_EQ(report.is_bootable, 1);
+    EXPECT_EQ(report.title_id, 0x55556666u);
+    EXPECT_EQ(std::string(report.title_name), "Media Boot Game");
+    EXPECT_EQ(std::string(report.default_xbe_path), "D:\\DEFAULT.XBE");
+    EXPECT_EQ(report.section_count, 1u);
+
+    // Verify machine state is PREPARED
+    xblob_machine_state_t state = XBLOB_MACHINE_STATE_CREATED;
+    EXPECT_EQ(xblob_machine_get_state(machine, &state), XBLOB_STATUS_OK);
+    EXPECT_EQ(state, XBLOB_MACHINE_STATE_PREPARED);
+
+    xblob_machine_destroy(machine);
+    std::filesystem::remove(iso_path);
+}
+
+TEST_CASE(TestCApiVfsBrowserPagination) {
+    auto img = xblob::testing::BuildValidTrimmedXdvdfsImage({
+        {"FILE1.BIN", {'A'}},
+        {"FILE2.BIN", {'B'}},
+        {"FILE3.BIN", {'C'}},
+        {"SUBDIR/TEST.DAT", {'D'}},
+    });
+
+    auto temp_dir = std::filesystem::temp_directory_path();
+    auto iso_path = temp_dir / "xblob_test_vfs_browser.iso";
+    {
+        std::ofstream ofs(iso_path, std::ios::binary);
+        ofs.write(reinterpret_cast<const char*>(img.data()),
+                  static_cast<std::streamsize>(img.size()));
+    }
+
+    std::string path_str = iso_path.string();
+    xblob_vfs_browser_t browser = nullptr;
+    EXPECT_EQ(xblob_vfs_browser_create(path_str.c_str(), path_str.size(), &browser),
+              XBLOB_STATUS_OK);
+    EXPECT_TRUE(browser != nullptr);
+
+    // Query count of root directory
+    uint32_t count = 0;
+    EXPECT_EQ(xblob_vfs_browser_get_entry_count(browser, "", 0, &count), XBLOB_STATUS_OK);
+    EXPECT_EQ(count, 4u); // FILE1, FILE2, FILE3, SUBDIR
+
+    // Two-call pagination: Page 1 (offset 0, limit 2)
+    uint32_t page1_count = 0;
+    EXPECT_EQ(xblob_vfs_browser_list_entries(browser, "", 0, 0, 2, nullptr, &page1_count),
+              XBLOB_STATUS_OK);
+    EXPECT_EQ(page1_count, 2u);
+
+    std::vector<xblob_dir_entry_t> entries(page1_count);
+    EXPECT_EQ(xblob_vfs_browser_list_entries(browser, "", 0, 0, 2, entries.data(), &page1_count),
+              XBLOB_STATUS_OK);
+    EXPECT_EQ(page1_count, 2u);
+    EXPECT_FALSE(std::string(entries[0].name).empty());
+    EXPECT_FALSE(std::string(entries[1].name).empty());
+
+    // Page 2 (offset 2, limit 2)
+    uint32_t page2_count = 2;
+    std::vector<xblob_dir_entry_t> entries2(2);
+    EXPECT_EQ(xblob_vfs_browser_list_entries(browser, "", 0, 2, 2, entries2.data(), &page2_count),
+              XBLOB_STATUS_OK);
+    EXPECT_EQ(page2_count, 2u);
+
+    // Page 3 beyond end (offset 4, limit 2) -> 0 entries
+    uint32_t page3_count = 2;
+    std::vector<xblob_dir_entry_t> entries3(2);
+    EXPECT_EQ(xblob_vfs_browser_list_entries(browser, "", 0, 4, 2, entries3.data(), &page3_count),
+              XBLOB_STATUS_OK);
+    EXPECT_EQ(page3_count, 0u);
+
+    // Browse subdirectory "SUBDIR"
+    uint32_t sub_count = 0;
+    EXPECT_EQ(xblob_vfs_browser_get_entry_count(browser, "SUBDIR", 6, &sub_count), XBLOB_STATUS_OK);
+    EXPECT_EQ(sub_count, 1u);
+
+    xblob_vfs_browser_destroy(browser);
+    std::filesystem::remove(iso_path);
 }
 
 int main() {

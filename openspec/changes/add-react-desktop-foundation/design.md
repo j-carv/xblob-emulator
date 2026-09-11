@@ -82,7 +82,7 @@ Testes cobrem:
 
 ### Dependências e licenças
 
-Fixar lockfiles npm/Cargo e registrar dependências diretas, propósito e licença em documentação. Builds podem acessar registros oficiais para instalar dependências; testes após instalação são offline. Não versionar `node_modules`, `dist`, `target`, `*.tsbuildinfo`, cobertura, caches ou `src-tauri/gen`; manter versionados fontes, lockfiles, configurações, capabilities e ícones necessários. A verificação deve usar `git status --porcelain -uall` para distinguir arquivos realmente untracked dos milhares já corretamente ignorados.
+Fixar lockfiles npm/Cargo e registrar dependências diretas, propósito e licença em documentação. A CLI Tauri v2 deve ser uma devDependency npm local, invocada pelo script `npm run tauri`, para que desenvolvimento e CI não dependam de instalação global. Builds podem acessar registros oficiais para instalar dependências; testes após instalação são offline. Não versionar `node_modules`, `dist`, `target`, `*.tsbuildinfo`, cobertura, caches ou `src-tauri/gen`; manter versionados fontes, lockfiles, configurações, capabilities e ícones necessários. A verificação deve usar `git status --porcelain -uall` para distinguir arquivos realmente untracked dos milhares já corretamente ignorados.
 
 ## Risks / Trade-offs
 

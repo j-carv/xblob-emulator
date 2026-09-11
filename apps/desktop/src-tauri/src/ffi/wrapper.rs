@@ -331,6 +331,229 @@ impl SafeMachineSession {
         }
         Ok(diag)
     }
+
+    pub fn get_frame_metadata(&self) -> Result<XblobFrameMetadata, FfiError> {
+        let mut meta = XblobFrameMetadata {
+            struct_size: std::mem::size_of::<XblobFrameMetadata>() as u32,
+            width: 0,
+            height: 0,
+            pitch: 0,
+            pixel_format: 0,
+            sequence_number: 0,
+            frame_cycle: 0,
+            buffer_size: 0,
+            is_valid: 0,
+        };
+
+        let status = unsafe { xblob_machine_get_frame_metadata(self.handle as _, &mut meta) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(meta)
+    }
+
+    pub fn copy_frame_pixels(&self, max_buffer_bytes: usize) -> Result<Vec<u8>, FfiError> {
+        let mut required_size: usize = 0;
+        let status = unsafe {
+            xblob_machine_copy_frame_pixels(self.handle as _, ptr::null_mut(), &mut required_size)
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        if required_size == 0 {
+            return Ok(Vec::new());
+        }
+
+        if required_size > max_buffer_bytes || required_size > 8_294_400 {
+            return Err(FfiError::BufferTooSmall);
+        }
+
+        let mut buffer = vec![0u8; required_size];
+        let mut inout_size = required_size;
+        let status = unsafe {
+            xblob_machine_copy_frame_pixels(self.handle as _, buffer.as_mut_ptr(), &mut inout_size)
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        buffer.truncate(inout_size);
+        Ok(buffer)
+    }
+
+    pub fn prepare_media(&mut self, path: &str) -> Result<XblobBootReport, FfiError> {
+        let path_bytes = path.as_bytes();
+        let mut report = XblobBootReport {
+            struct_size: std::mem::size_of::<XblobBootReport>() as u32,
+            media_type: XBLOB_MEDIA_TYPE_UNKNOWN,
+            default_xbe_path: [0; 256],
+            title_name: [0; 64],
+            title_id: 0,
+            entry_point: 0,
+            section_count: 0,
+            media_size_bytes: 0,
+            is_bootable: 0,
+            error_message: [0; 256],
+        };
+
+        let status = unsafe {
+            xblob_machine_prepare_media(
+                self.handle,
+                path_bytes.as_ptr() as *const c_char,
+                path_bytes.len(),
+                &mut report,
+            )
+        };
+
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        Ok(report)
+    }
+}
+
+pub struct SafeVfsBrowser {
+    handle: XblobVfsBrowserHandle,
+}
+
+impl SafeVfsBrowser {
+    pub fn open(path: &str) -> Result<Self, FfiError> {
+        let path_bytes = path.as_bytes();
+        let mut handle: XblobVfsBrowserHandle = ptr::null_mut();
+
+        let status = unsafe {
+            xblob_vfs_browser_create(
+                path_bytes.as_ptr() as *const c_char,
+                path_bytes.len(),
+                &mut handle,
+            )
+        };
+
+        if status != XBLOB_STATUS_OK || handle.is_null() {
+            return Err(FfiError::from_status(status));
+        }
+
+        Ok(SafeVfsBrowser { handle })
+    }
+
+    pub fn get_entry_count(&self, dir_path: &str) -> Result<u32, FfiError> {
+        let dir_bytes = dir_path.as_bytes();
+        let mut count: u32 = 0;
+        let status = unsafe {
+            xblob_vfs_browser_get_entry_count(
+                self.handle,
+                dir_bytes.as_ptr() as *const c_char,
+                dir_bytes.len(),
+                &mut count,
+            )
+        };
+
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        Ok(count)
+    }
+
+    pub fn list_entries(
+        &self,
+        dir_path: &str,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<XblobDirEntry>, FfiError> {
+        let dir_bytes = dir_path.as_bytes();
+        let mut count: u32 = 0;
+        let status = unsafe {
+            xblob_vfs_browser_list_entries(
+                self.handle,
+                dir_bytes.as_ptr() as *const c_char,
+                dir_bytes.len(),
+                offset,
+                limit,
+                ptr::null_mut(),
+                &mut count,
+            )
+        };
+
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut entries = vec![
+            XblobDirEntry {
+                name: [0; 256],
+                size: 0,
+                is_directory: 0,
+                attributes: 0,
+            };
+            count as usize
+        ];
+
+        let mut actual_count = count;
+        let status = unsafe {
+            xblob_vfs_browser_list_entries(
+                self.handle,
+                dir_bytes.as_ptr() as *const c_char,
+                dir_bytes.len(),
+                offset,
+                limit,
+                entries.as_mut_ptr(),
+                &mut actual_count,
+            )
+        };
+
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        entries.truncate(actual_count as usize);
+        Ok(entries)
+    }
+}
+
+impl Drop for SafeVfsBrowser {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe {
+                xblob_vfs_browser_destroy(self.handle);
+            }
+            self.handle = ptr::null_mut();
+        }
+    }
+}
+
+const B64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+pub fn encode_base64(data: &[u8]) -> String {
+    if data.is_empty() {
+        return String::new();
+    }
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] } else { 0 };
+
+        result.push(B64_CHARS[(b0 >> 2) as usize] as char);
+        result.push(B64_CHARS[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(B64_CHARS[(((b1 & 0x0F) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(B64_CHARS[(b2 & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
 }
 
 impl Drop for SafeMachineSession {

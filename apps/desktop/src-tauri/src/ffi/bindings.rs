@@ -15,7 +15,7 @@ pub const XBLOB_STATUS_ERROR_INVALID_STATE: XblobStatus = 9;
 pub const XBLOB_STATUS_ERROR_INTERNAL: XblobStatus = 99;
 
 pub const XBLOB_C_API_VERSION_MAJOR: u32 = 1;
-pub const XBLOB_C_API_VERSION_MINOR: u32 = 2;
+pub const XBLOB_C_API_VERSION_MINOR: u32 = 4;
 pub const XBLOB_C_API_VERSION_PATCH: u32 = 0;
 
 pub const XBLOB_CAPABILITY_NONE: u64 = 0;
@@ -28,6 +28,10 @@ pub const XBLOB_CAPABILITY_VIRTUAL_MEMORY: u64 = 1 << 5;
 pub const XBLOB_CAPABILITY_XBE_LOADER: u64 = 1 << 6;
 pub const XBLOB_CAPABILITY_MACHINE_SESSION: u64 = 1 << 7;
 pub const XBLOB_CAPABILITY_DIAGNOSTIC_EXECUTION: u64 = 1 << 8;
+pub const XBLOB_CAPABILITY_FRAMEBUFFER_PRESENTATION: u64 = 1 << 9;
+pub const XBLOB_CAPABILITY_NV2A_GPU: u64 = 1 << 10;
+pub const XBLOB_CAPABILITY_XDVDFS_VFS: u64 = 1 << 11;
+pub const XBLOB_CAPABILITY_MEDIA_BOOT: u64 = 1 << 12;
 
 pub type XblobMediaType = i32;
 pub const XBLOB_MEDIA_TYPE_UNKNOWN: XblobMediaType = 0;
@@ -61,6 +65,30 @@ pub struct XblobPrepareDiagnostic {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct XblobBootReport {
+    pub struct_size: u32,
+    pub media_type: XblobMediaType,
+    pub default_xbe_path: [c_char; 256],
+    pub title_name: [c_char; 64],
+    pub title_id: u32,
+    pub entry_point: u32,
+    pub section_count: u32,
+    pub media_size_bytes: u64,
+    pub is_bootable: i32,
+    pub error_message: [c_char; 256],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct XblobDirEntry {
+    pub name: [c_char; 256],
+    pub size: u64,
+    pub is_directory: i32,
+    pub attributes: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct XblobCoreInfo {
     pub struct_size: u32,
     pub abi_version_major: u32,
@@ -76,6 +104,9 @@ pub type XblobMediaReportHandle = *mut XblobMediaReportOpaque;
 
 pub enum XblobMachineOpaque {}
 pub type XblobMachineHandle = *mut XblobMachineOpaque;
+
+pub enum XblobVfsBrowserOpaque {}
+pub type XblobVfsBrowserHandle = *mut XblobVfsBrowserOpaque;
 
 extern "C" {
     pub fn xblob_get_abi_version_major() -> u32;
@@ -186,6 +217,61 @@ extern "C" {
         out_summary: *mut XblobTraceSummary,
     ) -> XblobStatus;
     pub fn xblob_machine_clear_trace(machine: XblobMachineHandle) -> XblobStatus;
+    pub fn xblob_machine_get_frame_metadata(
+        machine: *const XblobMachineOpaque,
+        out_metadata: *mut XblobFrameMetadata,
+    ) -> XblobStatus;
+    pub fn xblob_machine_copy_frame_pixels(
+        machine: *const XblobMachineOpaque,
+        buffer: *mut u8,
+        inout_buffer_size: *mut usize,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_prepare_media(
+        machine: XblobMachineHandle,
+        path_utf8: *const c_char,
+        path_length: usize,
+        out_report: *mut XblobBootReport,
+    ) -> XblobStatus;
+
+    pub fn xblob_vfs_browser_create(
+        path_utf8: *const c_char,
+        path_length: usize,
+        out_browser: *mut XblobVfsBrowserHandle,
+    ) -> XblobStatus;
+
+    pub fn xblob_vfs_browser_destroy(browser: XblobVfsBrowserHandle);
+
+    pub fn xblob_vfs_browser_get_entry_count(
+        browser: XblobVfsBrowserHandle,
+        dir_path_utf8: *const c_char,
+        dir_path_len: usize,
+        out_count: *mut u32,
+    ) -> XblobStatus;
+
+    pub fn xblob_vfs_browser_list_entries(
+        browser: XblobVfsBrowserHandle,
+        dir_path_utf8: *const c_char,
+        dir_path_len: usize,
+        offset: u32,
+        limit: u32,
+        out_entries: *mut XblobDirEntry,
+        inout_count: *mut u32,
+    ) -> XblobStatus;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobFrameMetadata {
+    pub struct_size: u32,
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+    pub pixel_format: u32,
+    pub sequence_number: u64,
+    pub frame_cycle: u64,
+    pub buffer_size: u32,
+    pub is_valid: i32,
 }
 
 #[repr(C)]

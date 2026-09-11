@@ -190,6 +190,72 @@ describe('Feature Views and Accessibility', () => {
     expect(results).toHaveNoViolations();
   });
 
+  it('InspectionView displays ineligible explanation on Framebuffer NV2A tab for commercial media and passes axe check', async () => {
+    const { container } = render(
+      <InspectionView
+        report={mockXbeReport}
+        error={null}
+        isLoading={false}
+        onPickFile={vi.fn()}
+        onReset={vi.fn()}
+      />
+    );
+
+    const displayTab = screen.getByRole('tab', { name: 'Framebuffer NV2A' });
+    expect(displayTab).toBeInTheDocument();
+    fireEvent.click(displayTab);
+
+    expect(screen.getByText('Mídia Não Suportada Neste Marco')).toBeInTheDocument();
+    expect(screen.getByText(/Visualização Gráfica Indisponível para Mídia Geral Neste Marco/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^play$/i })).not.toBeInTheDocument();
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('InspectionView displays active framebuffer preview for eligible synthetic media and passes axe check', async () => {
+    const mockSyntheticReport: MediaReport = {
+      type: 'xbe',
+      filePath: '/synthetic/test_fixture.xbe',
+      fileSize: 4096,
+      humanSummary: 'Synthetic fixture',
+      xbe: {
+        titleName: 'Synthetic Display Test',
+        sectionCount: 1,
+      },
+    };
+
+    const { container } = render(
+      <InspectionView
+        report={mockSyntheticReport}
+        error={null}
+        isLoading={false}
+        onPickFile={vi.fn()}
+        onReset={vi.fn()}
+      />
+    );
+
+    // 1. Prepare session
+    fireEvent.click(screen.getByRole('tab', { name: 'Validação & Preparação' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Validar e Preparar Sessão' }));
+    await waitFor(() => {
+      expect(screen.getByText(/sessão pronta/i)).toBeInTheDocument();
+    });
+
+    // 2. Open Framebuffer NV2A tab
+    fireEvent.click(screen.getByRole('tab', { name: 'Framebuffer NV2A' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: /framebuffer diagnóstico nv2a/i })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Frame Ativo/i)).toBeInTheDocument();
+    expect(screen.getByText(/RGBA8 Linear/i)).toBeInTheDocument();
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
   it('AboutModal displays legal scope disclaimer and passes axe check', async () => {
     const handleClose = vi.fn();
     const { container } = render(
@@ -232,6 +298,97 @@ describe('Feature Views and Accessibility', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Inspecionar Mídia Xbox' })).toBeInTheDocument();
     });
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('InspectionView renders "Preparar Mídia" flow with distinct non-play action and passes axe check', async () => {
+    const { container } = render(
+      <InspectionView
+        report={mockXbeReport}
+        error={null}
+        isLoading={false}
+        onPickFile={vi.fn()}
+        onReset={vi.fn()}
+      />
+    );
+
+    const mediaBootTab = screen.getByRole('tab', { name: 'Preparar Mídia' });
+    expect(mediaBootTab).toBeInTheDocument();
+    fireEvent.click(mediaBootTab);
+
+    expect(
+      screen.getByRole('heading', { name: 'Preparação de Mídia e Montagem VFS' })
+    ).toBeInTheDocument();
+
+    const prepareBtn = screen.getByRole('button', { name: 'Preparar mídia' });
+    expect(prepareBtn).toBeInTheDocument();
+
+    // Verify absence of play/run actions
+    expect(screen.queryByRole('button', { name: /^jogar$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^play$/i })).not.toBeInTheDocument();
+
+    fireEvent.click(prepareBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mídia Pronta (Prepared)')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('VFS: D:\\ Montado (Read-Only)')).toBeInTheDocument();
+    expect(screen.getByText('DEFAULT.XBE')).toBeInTheDocument();
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('InspectionView renders XDVDFS Browser for ISO media with pagination, filtering and passes axe check', async () => {
+    const mockIsoReport: MediaReport = {
+      type: 'xiso_trimmed',
+      filePath: '/games/clean_room/game.iso',
+      fileSize: 4700372992,
+      humanSummary: 'XDVDFS ISO report',
+      xiso: {
+        variant: 'XisoTrimmed',
+        volumeDescriptorOffset: 0x10000,
+        rootDirSector: 0x200,
+        rootDirSize: 4096,
+        validFooterMagic: true,
+      },
+    };
+
+    const { container } = render(
+      <InspectionView
+        report={mockIsoReport}
+        error={null}
+        isLoading={false}
+        onPickFile={vi.fn()}
+        onReset={vi.fn()}
+      />
+    );
+
+    const browserTab = screen.getByRole('tab', { name: 'Navegador XDVDFS' });
+    expect(browserTab).toBeInTheDocument();
+    fireEvent.click(browserTab);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Navegador de Arquivos XDVDFS' })).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('DEFAULT.XBE')).toBeInTheDocument();
+    });
+
+    // Verify filter input
+    const filterInput = screen.getByRole('searchbox', { name: 'Filtrar entradas do diretório' });
+    expect(filterInput).toBeInTheDocument();
+
+    fireEvent.change(filterInput, { target: { value: 'DEFAULT' } });
+    expect(screen.getByText('DEFAULT.XBE')).toBeInTheDocument();
+
+    // Verify pagination controls
+    expect(screen.getByRole('button', { name: 'Página anterior' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Próxima página' })).toBeEnabled();
 
     const results = await axe(container);
     expect(results).toHaveNoViolations();

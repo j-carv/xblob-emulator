@@ -14,7 +14,11 @@ if ! command -v "$CLANG_FORMAT" &> /dev/null; then
 fi
 
 FAILED=0
-FILES=$(find "${ROOT_DIR}/apps" "${ROOT_DIR}/libs" "${ROOT_DIR}/tests" -type f \( -name "*.hpp" -o -name "*.h" -o -name "*.cpp" -o -name "*.c" \) 2>/dev/null || true)
+FILES=$(find "${ROOT_DIR}/apps" "${ROOT_DIR}/libs" "${ROOT_DIR}/tests" \
+    -not -path "*/target/*" \
+    -not -path "*/build/*" \
+    -not -path "*/node_modules/*" \
+    -type f \( -name "*.hpp" -o -name "*.h" -o -name "*.cpp" -o -name "*.c" \) 2>/dev/null || true)
 
 if [ -z "$FILES" ]; then
     echo "Nenhum arquivo C/C++ encontrado ainda para verificar."

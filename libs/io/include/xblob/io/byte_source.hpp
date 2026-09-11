@@ -47,4 +47,32 @@ private:
     ByteSpan data_;
 };
 
+class VectorByteSource final : public ByteSource {
+public:
+    explicit VectorByteSource(std::vector<u8> data) noexcept : data_(std::move(data)) {}
+
+    [[nodiscard]] u64 size() const noexcept override { return static_cast<u64>(data_.size()); }
+
+    [[nodiscard]] Result<void> ReadAt(u64 offset, std::span<u8> dst) const override {
+        if (!RangeInBoundsU64(offset, dst.size(), size())) {
+            return Error{ErrorCode::OutOfBounds, "Leitura fora dos limites do buffer", offset};
+        }
+        const auto* src = data_.data() + offset;
+        std::copy(src, src + dst.size(), dst.data());
+        return Result<void>::Ok();
+    }
+
+    [[nodiscard]] Result<ByteSpan> SpanAt(u64 offset, size_t count) const override {
+        if (!RangeInBoundsU64(offset, count, size())) {
+            return Error{ErrorCode::OutOfBounds, "Span fora dos limites do buffer", offset};
+        }
+        return ByteSpan(data_.data() + offset, count);
+    }
+
+    [[nodiscard]] const std::vector<u8>& data() const noexcept { return data_; }
+
+private:
+    std::vector<u8> data_;
+};
+
 } // namespace xblob

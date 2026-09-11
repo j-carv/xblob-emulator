@@ -1,6 +1,7 @@
 add_library(xblob_c_api STATIC
   src/c_api.cpp
   src/c_api_machine.cpp
+  src/c_api_vfs.cpp
 )
 
 target_include_directories(xblob_c_api
@@ -12,6 +13,7 @@ target_include_directories(xblob_c_api
 target_link_libraries(xblob_c_api
   PUBLIC
     xblob_machine
+    xblob_vfs
     xblob_formats
     xblob_io
     xblob_common

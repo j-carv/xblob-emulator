@@ -26,6 +26,12 @@ Para garantir que a integração contínua (CI) e os testes locais funcionem de 
 
 ---
 
-## 3. Responsabilidade do Usuário
+## 3. Meta Final do Produto e Responsabilidade do Usuário
 
-O usuário final do emulador é o único responsável por prover legalmente quaisquer arquivos de mídia, cópias de segurança de seus próprios discos ou dados de configuração de seu próprio console conforme a legislação aplicável em sua jurisdição.
+1. **Execução de Mídias Legais do Usuário**:
+   - A meta final do emulador **xblob** é viabilizar o carregamento e a execução de arquivos executáveis (.xbe) e imagens de disco (.iso, .xiso) fornecidos e possuídos legalmente pelo usuário em seu próprio sistema local.
+   - Conteúdo comercial legítimo do próprio usuário não é proibido como dado de entrada da aplicação.
+2. **Responsabilidade Exclusiva do Usuário**:
+   - O usuário final do emulador é o único responsável por prover legalmente quaisquer arquivos de mídia, cópias de segurança de seus próprios discos ou dados de configuração de seu próprio console conforme a legislação aplicável em sua jurisdição.
+3. **Limitação Transitória do Marco Atual**:
+   - No estágio de engenharia atual, o emulador ainda não executa jogos comerciais interativos (controles de execução "Play" aguardam a conclusão e validação dos subsistemas de hardware pendentes). As capacidades de execução e preview de display estão restritas a fixtures sintéticas de teste e diagnóstico.
