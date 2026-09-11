@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-09-10
+goal: Criar um monorepo C/C++ sustentável, com fronteiras claras, CI
+  multiplataforma, carregamento inicial seguro de imagens e roadmap incremental
+  rumo à alta compatibilidade.

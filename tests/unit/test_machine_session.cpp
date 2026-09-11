@@ -1,0 +1,160 @@
+#include "tests/fixtures/synthetic_media.hpp"
+#include "tests/test_framework.hpp"
+#include "xblob/io/byte_source.hpp"
+#include "xblob/machine/machine_session.hpp"
+
+using namespace xblob;
+using namespace xblob::machine;
+
+TEST_CASE(TestMachineSessionLifecycleTransitions) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    // Initial state is Created
+    EXPECT_EQ(session->state(), MachineState::Created);
+
+    // Step or Run on un-prepared session must fail with InvalidState
+    auto step_err = session->Step(1);
+    EXPECT_FALSE(step_err.has_value());
+    EXPECT_EQ(step_err.error().code, ErrorCode::InvalidState);
+
+    auto run_err = session->RunWithBudget(10, 100);
+    EXPECT_FALSE(run_err.has_value());
+    EXPECT_EQ(run_err.error().code, ErrorCode::InvalidState);
+
+    // Prepare valid synthetic XBE
+    auto xbe_bytes = testing::CreateValidSyntheticXbe(0x12345678, "Synthetic Game", 1);
+    // Write HLT at entry point (0x1000 in raw file)
+    xbe_bytes[0x1000] = 0xF4; // HLT
+    MemoryByteSource source(xbe_bytes);
+
+    auto prep_res = session->Prepare(source);
+    EXPECT_TRUE(prep_res.has_value());
+    EXPECT_EQ(session->state(), MachineState::Prepared);
+
+    // Preparing again must fail with InvalidState without altering state
+    auto prep2_res = session->Prepare(source);
+    EXPECT_FALSE(prep2_res.has_value());
+    EXPECT_EQ(prep2_res.error().code, ErrorCode::InvalidState);
+    EXPECT_EQ(session->state(), MachineState::Prepared);
+
+    // Pause transitions Prepared -> Paused
+    EXPECT_TRUE(session->Pause().has_value());
+    EXPECT_EQ(session->state(), MachineState::Paused);
+
+    // Step executing HLT
+    auto step_hlt = session->Step(1);
+    EXPECT_TRUE(step_hlt.has_value());
+    EXPECT_EQ(step_hlt->instructions_executed, 1u);
+    EXPECT_EQ(step_hlt->cpu_result, cpu::StepResult::Halted);
+    EXPECT_EQ(session->state(), MachineState::Paused);
+
+    // Stop session -> Stopped
+    EXPECT_TRUE(session->Stop().has_value());
+    EXPECT_EQ(session->state(), MachineState::Stopped);
+
+    // Step after stop fails
+    auto step_stop = session->Step(1);
+    EXPECT_FALSE(step_stop.has_value());
+    EXPECT_EQ(step_stop.error().code, ErrorCode::InvalidState);
+
+    // Pause after stop fails
+    auto pause_stop = session->Pause();
+    EXPECT_FALSE(pause_stop.has_value());
+    EXPECT_EQ(pause_stop.error().code, ErrorCode::InvalidState);
+}
+
+TEST_CASE(TestMachineSessionIsolation) {
+    auto s1_res = MachineSession::Create(memory::kRamSizeRetail);
+    auto s2_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(s1_res.has_value());
+    EXPECT_TRUE(s2_res.has_value());
+    auto s1 = std::move(*s1_res);
+    auto s2 = std::move(*s2_res);
+
+    // Session 1: MOV EAX, 0x11111111; HLT
+    auto xbe1 = testing::CreateValidSyntheticXbe(0x11111111, "App 1", 1);
+    xbe1[0x1000] = 0xB8;
+    xbe1[0x1001] = 0x11;
+    xbe1[0x1002] = 0x11;
+    xbe1[0x1003] = 0x11;
+    xbe1[0x1004] = 0x11;
+    xbe1[0x1005] = 0xF4;
+    MemoryByteSource src1(xbe1);
+    EXPECT_TRUE(s1->Prepare(src1).has_value());
+
+    // Session 2: MOV EAX, 0x22222222; HLT
+    auto xbe2 = testing::CreateValidSyntheticXbe(0x22222222, "App 2", 1);
+    xbe2[0x1000] = 0xB8;
+    xbe2[0x1001] = 0x22;
+    xbe2[0x1002] = 0x22;
+    xbe2[0x1003] = 0x22;
+    xbe2[0x1004] = 0x22;
+    xbe2[0x1005] = 0xF4;
+    MemoryByteSource src2(xbe2);
+    EXPECT_TRUE(s2->Prepare(src2).has_value());
+
+    // Step s1 only
+    auto run1 = s1->RunWithBudget(10, 100);
+    EXPECT_TRUE(run1.has_value());
+    EXPECT_EQ(s1->cpu().context().GetGpr(cpu::Reg32::EAX), 0x11111111u);
+
+    // Ensure s2 was not mutated
+    EXPECT_EQ(s2->state(), MachineState::Prepared);
+    EXPECT_EQ(s2->cpu().context().GetGpr(cpu::Reg32::EAX), 0u);
+    EXPECT_EQ(s2->scheduler().current_cycle(), 0u);
+
+    // Step s2
+    auto run2 = s2->RunWithBudget(10, 100);
+    EXPECT_TRUE(run2.has_value());
+    EXPECT_EQ(s2->cpu().context().GetGpr(cpu::Reg32::EAX), 0x22222222u);
+
+    // Verify independent RAM values
+    auto r1_word = s1->address_space().Read32(0x00011001);
+    auto r2_word = s2->address_space().Read32(0x00011001);
+    EXPECT_TRUE(r1_word.has_value());
+    EXPECT_TRUE(r2_word.has_value());
+    EXPECT_EQ(*r1_word, 0x11111111u);
+    EXPECT_EQ(*r2_word, 0x22222222u);
+}
+
+TEST_CASE(TestMachineSessionDeterminismAcrossRuns) {
+    auto make_run = []() {
+        auto s_res = MachineSession::Create(memory::kRamSizeRetail);
+        auto s = std::move(s_res.value());
+        auto xbe = testing::CreateValidSyntheticXbe(0x9999, "DetTest", 1);
+        // MOV EAX, 10
+        // ADD EAX, 5
+        // HLT
+        xbe[0x1000] = 0xB8;
+        xbe[0x1001] = 0x0A;
+        xbe[0x1002] = 0x00;
+        xbe[0x1003] = 0x00;
+        xbe[0x1004] = 0x00;
+        xbe[0x1005] = 0x05;
+        xbe[0x1006] = 0x05;
+        xbe[0x1007] = 0x00;
+        xbe[0x1008] = 0x00;
+        xbe[0x1009] = 0x00;
+        xbe[0x100A] = 0xF4;
+        MemoryByteSource src(xbe);
+        (void)s->Prepare(src);
+        auto outcome = s->RunWithBudget(100, 1000);
+        return std::make_tuple(s->cpu().context(), s->scheduler().current_cycle(), outcome.value());
+    };
+
+    auto [ctx1, cycle1, out1] = make_run();
+    auto [ctx2, cycle2, out2] = make_run();
+
+    EXPECT_EQ(ctx1.eip, ctx2.eip);
+    EXPECT_EQ(ctx1.GetGpr(cpu::Reg32::EAX), 15u);
+    EXPECT_EQ(ctx1.GetGpr(cpu::Reg32::EAX), ctx2.GetGpr(cpu::Reg32::EAX));
+    EXPECT_EQ(cycle1, cycle2);
+    EXPECT_EQ(out1.instructions_executed, out2.instructions_executed);
+    EXPECT_EQ(out1.cycles_consumed, out2.cycles_consumed);
+}
+
+int main() {
+    return xblob::testing::RunAllTests();
+}

@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-09-10
+goal: Criar uma máquina convidada testável que carregue bytes sintéticos em
+  memória, execute um subconjunto inicial documentado de instruções x86 e avance
+  em ciclos determinísticos, sem kernel, GPU ou jogos.

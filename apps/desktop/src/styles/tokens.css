@@ -1,0 +1,131 @@
+/* Design Tokens - WCAG 2.2 AA compliant palette */
+
+:root {
+  /* Font Stack & Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Radius & Elevation */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Focus Ring - WCAG 2.2 compliant */
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+}
+
+/* Light Theme Variables */
+[data-theme="light"] {
+  --color-bg-canvas: #f8fafc;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-hover: #f1f5f9;
+  --color-bg-card: #ffffff;
+  --color-bg-muted: #e2e8f0;
+
+  --color-text-primary: #0f172a;    /* Contrast > 12:1 against canvas */
+  --color-text-secondary: #334155;  /* Contrast > 7:1 against canvas */
+  --color-text-muted: #475569;      /* Contrast > 4.5:1 against canvas */
+  --color-text-inverse: #ffffff;
+
+  --color-border-subtle: #cbd5e1;
+  --color-border-strong: #64748b;
+
+  --color-primary: #15803d;         /* Forest green - Contrast > 4.5:1 against light bg */
+  --color-primary-hover: #166534;
+  --color-primary-contrast: #ffffff;
+
+  --color-accent: #0284c7;
+  --color-accent-hover: #0369a1;
+
+  --color-danger: #b91c1c;          /* Red - Contrast > 4.5:1 */
+  --color-danger-hover: #991b1b;
+  --color-danger-surface: #fef2f2;
+
+  --color-success: #15803d;
+  --color-success-surface: #f0fdf4;
+
+  --color-warning: #b45309;
+  --color-warning-surface: #fffbeb;
+
+  --color-focus-ring: #0284c7;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Theme Variables (Xbox classic aesthetic) */
+[data-theme="dark"] {
+  --color-bg-canvas: #0d1117;
+  --color-bg-surface: #161b22;
+  --color-bg-surface-hover: #21262d;
+  --color-bg-card: #161b22;
+  --color-bg-muted: #30363d;
+
+  --color-text-primary: #f0f6fc;    /* Contrast > 14:1 against dark canvas */
+  --color-text-secondary: #c9d1d9;  /* Contrast > 9:1 against dark canvas */
+  --color-text-muted: #8b949e;      /* Contrast > 4.5:1 against dark canvas */
+  --color-text-inverse: #0d1117;
+
+  --color-border-subtle: #30363d;
+  --color-border-strong: #8b949e;
+
+  --color-primary: #22c55e;         /* Xbox vibrant green */
+  --color-primary-hover: #16a34a;
+  --color-primary-contrast: #042f13;
+
+  --color-accent: #38bdf8;
+  --color-accent-hover: #0ea5e9;
+
+  --color-danger: #f87171;
+  --color-danger-hover: #ef4444;
+  --color-danger-surface: #450a0a;
+
+  --color-success: #4ade80;
+  --color-success-surface: #052e16;
+
+  --color-warning: #fbbf24;
+  --color-warning-surface: #451a03;
+
+  --color-focus-ring: #38bdf8;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.6), 0 2px 4px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.7), 0 4px 6px -4px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

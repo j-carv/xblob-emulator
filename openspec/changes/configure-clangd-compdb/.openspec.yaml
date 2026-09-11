@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-09-10
+goal: Garantir navegação e diagnósticos C/C++ corretos no workspace sem caminhos
+  absolutos.
+skip_specs: true

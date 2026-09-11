@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    name: Code Formatting Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+      - name: Check Formatting
+        run: ./tools/check-format.sh
+
+  build-and-test:
+    name: Build & Test (${{ matrix.os }} - ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - os: macos-latest
+            compiler: appleclang
+            cc: clang
+            cxx: clang++
+          - os: windows-latest
+            compiler: msvc
+            cc: cl
+            cxx: cl
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Environment (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DXBLOB_WARNINGS_AS_ERRORS=ON -DXBLOB_BUILD_TESTS=ON
+          else
+            export CC=${{ matrix.cc }}
+            export CXX=${{ matrix.cxx }}
+            cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DXBLOB_WARNINGS_AS_ERRORS=ON -DXBLOB_BUILD_TESTS=ON
+          fi
+
+      - name: Build Project
+        run: cmake --build build --config Release
+
+      - name: Run Tests (CTest)
+        run: ctest --test-dir build --output-on-failure -C Release

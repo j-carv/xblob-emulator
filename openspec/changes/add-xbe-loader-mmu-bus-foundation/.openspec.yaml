@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-10
+goal: Conectar formatos, memória e CPU em uma sessão de máquina capaz de
+  carregar e preparar executáveis sintéticos, sem kernel ou jogos comerciais.

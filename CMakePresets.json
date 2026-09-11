@@ -1,0 +1,97 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Padrão (Debug)",
+      "description": "Configuração padrão com modo Debug",
+      "binaryDir": "${sourceDir}/build/default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "XBLOB_BUILD_TESTS": "ON",
+        "XBLOB_BUILD_APPS": "ON",
+        "XBLOB_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Configuração otimizada para lançamento",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "XBLOB_BUILD_TESTS": "ON",
+        "XBLOB_BUILD_APPS": "ON"
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "displayName": "Debug com Sanitizers",
+      "description": "Configuração Debug com AddressSanitizer e UndefinedBehaviorSanitizer",
+      "binaryDir": "${sourceDir}/build/asan-ubsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "XBLOB_ENABLE_SANITIZERS": "ON",
+        "XBLOB_BUILD_TESTS": "ON",
+        "XBLOB_BUILD_APPS": "ON"
+      }
+    },
+    {
+      "name": "linux-gcc",
+      "displayName": "Linux GCC",
+      "description": "Preset para Linux com GCC",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/linux-gcc"
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows MSVC",
+      "description": "Preset para Windows com MSVC",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/windows-msvc"
+    },
+    {
+      "name": "macos-appleclang",
+      "displayName": "macOS AppleClang",
+      "description": "Preset para macOS com AppleClang",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/macos-appleclang"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

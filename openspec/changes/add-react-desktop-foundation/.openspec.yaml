@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-09-10
+goal: Entregar um aplicativo desktop multiplataforma funcional para selecionar e
+  inspecionar XBE/ISO/XISO sem executar conteúdo convidado, com fronteiras
+  robustas entre React, Rust e C++.
