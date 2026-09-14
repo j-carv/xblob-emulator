@@ -24,4 +24,4 @@
 - [x] 5.1 Executar CTest normal e ASan+UBSan, format, clangd, C11 legacy, thread/race review e ownership review.
 - [x] 5.2 Executar Rust fmt/clippy/test/build e npm lint/typecheck/test/build/Tauri CLI.
 - [x] 5.3 Atualizar CI, README, ARCHITECTURE, docs e diário com métricas e limitações.
-- [ ] 5.4 Validar parent e child changes strict, completar manifesto, integrar em main e remover worktrees somente após branches integradas.
+- [x] 5.4 Validar parent e child changes strict, completar manifesto, integrar em main e remover worktrees somente após branches integradas.
