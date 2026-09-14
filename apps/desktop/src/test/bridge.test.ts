@@ -17,13 +17,15 @@ describe('Bridge layer and DTOs', () => {
     const info = await bridge.getCoreInfo();
 
     expect(info.abiVersionMajor).toBe(1);
-    expect(info.abiVersionMinor).toBe(4);
+    expect(info.abiVersionMinor).toBe(5);
     expect(info.abiVersionPatch).toBe(0);
     expect(info.capabilities).toBeGreaterThan(0);
     expect(info.capabilities & (1 << 9)).toBeGreaterThan(0);
     expect(info.capabilities & (1 << 10)).toBeGreaterThan(0);
     expect(info.capabilities & (1 << 11)).toBeGreaterThan(0);
     expect(info.capabilities & (1 << 12)).toBeGreaterThan(0);
+    expect(info.capabilities & (1 << 13)).toBeGreaterThan(0);
+    expect(info.capabilities & (1 << 14)).toBeGreaterThan(0);
     expect(info.productName).toBe('xblob');
     expect(info.productVersion).toBe('0.1.0');
   });
@@ -174,5 +176,29 @@ describe('Bridge layer and DTOs', () => {
     await expect(bridge.browseMediaVfs('/games/missing.iso', '', 0, 5)).rejects.toThrow(
       'Arquivo não encontrado no caminho especificado'
     );
+  });
+
+  it('should handle experimental title execution lifecycle and diagnostics', async () => {
+    const bridge = new MockBridge();
+    const startSnap = await bridge.startTitleExecution('/games/halo/default.xbe', {
+      maxInstructions: 1000,
+    });
+    expect(startSnap.state).toBe('Paused');
+    expect(startSnap.instructionsExecuted).toBeGreaterThan(0);
+    expect(startSnap.registers.eipHex).toBe('0x00011040');
+    expect(startSnap.stackValid).toBe(true);
+    expect(startSnap.stackWordsHex.length).toBe(8);
+
+    const diag = await bridge.getCompatibilityDiagnostic();
+    expect(diag.blockerCount).toBe(1);
+    expect(diag.firstBlockerCode).toBe('UnsupportedExport');
+    expect(diag.blockerSymbolOrMnemonic).toBe('AvSetDisplayMode');
+
+    const trace = await bridge.getExecutionTrace();
+    expect(trace).toContain('CPU Reset');
+    expect(trace).toContain('AvSetDisplayMode');
+
+    const stopSnap = await bridge.stopTitleExecution();
+    expect(stopSnap.state).toBe('Stopped');
   });
 });

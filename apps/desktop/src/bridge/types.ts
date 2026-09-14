@@ -123,6 +123,72 @@ export interface AppError {
   details?: string;
 }
 
+export interface ExecutionBudgets {
+  maxInstructions?: number;
+  maxCycles?: number;
+  maxWallTimeMs?: number;
+  maxEvents?: number;
+  chunkInstructions?: number;
+}
+
+export interface CpuRegisters {
+  eax: number;
+  eaxHex: string;
+  ecx: number;
+  ecxHex: string;
+  edx: number;
+  edxHex: string;
+  ebx: number;
+  ebxHex: string;
+  esp: number;
+  espHex: string;
+  ebp: number;
+  ebpHex: string;
+  esi: number;
+  esiHex: string;
+  edi: number;
+  ediHex: string;
+  eip: number;
+  eipHex: string;
+  eflags: number;
+  eflagsHex: string;
+}
+
+export interface MachineSnapshot {
+  state: string;
+  stopReasonCode: string;
+  faultEip: number;
+  faultEipHex: string;
+  activeThreadId: number;
+  threadCount: number;
+  currentCycle: number;
+  instructionsExecuted: number;
+  eventsFired: number;
+  registers: CpuRegisters;
+  stackValid: boolean;
+  stackWords: number[];
+  stackWordsHex: string[];
+  stopReasonCategory: string;
+  stopReasonSymbol: string;
+  stopReasonDetail: string;
+  errorMessage?: string;
+}
+
+export interface CompatibilityDiagnostic {
+  firstBlockerCode: string;
+  blockerOrdinalOrOpcode: number;
+  blockerOrdinalOrOpcodeHex: string;
+  blockerThreadId: number;
+  blockerEip: number;
+  blockerEipHex: string;
+  blockerCount: number;
+  blockerCategory: string;
+  blockerSymbolOrMnemonic: string;
+  blockerDetail: string;
+  totalInstructions: number;
+  totalCycles: number;
+}
+
 export interface BridgeApi {
   getCoreInfo(): Promise<CoreInfo>;
   inspectMedia(filePath: string): Promise<MediaReport>;
@@ -131,4 +197,11 @@ export interface BridgeApi {
   prepareMedia(filePath: string): Promise<BootReport>;
   browseMediaVfs(filePath: string, directory: string, offset: number, limit: number): Promise<VfsDirectoryPage>;
   pickFile(): Promise<string | null>;
+  startTitleExecution(filePath: string, budgets?: ExecutionBudgets): Promise<MachineSnapshot>;
+  resumeTitleExecution(budgets?: ExecutionBudgets): Promise<MachineSnapshot>;
+  pauseTitleExecution(): Promise<MachineSnapshot>;
+  stopTitleExecution(): Promise<MachineSnapshot>;
+  getExecutionSnapshot(): Promise<MachineSnapshot>;
+  getCompatibilityDiagnostic(): Promise<CompatibilityDiagnostic>;
+  getExecutionTrace(): Promise<string>;
 }

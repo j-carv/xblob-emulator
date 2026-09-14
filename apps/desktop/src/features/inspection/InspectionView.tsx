@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { Tabs, TabItem } from '../../components/Tabs';
 import { Alert } from '../../components/Toast';
 import { DiagnosticCanvasPreview } from './DiagnosticCanvasPreview';
+import { ExperimentalExecutionPanel } from './ExperimentalExecutionPanel';
 import { MediaBootPanel } from './MediaBootPanel';
 import { ValidationPanel } from './ValidationPanel';
 import { XdvdfsBrowser } from './XdvdfsBrowser';
@@ -306,6 +307,12 @@ export const InspectionView: React.FC<InspectionViewProps> = ({
         id: 'media_boot',
         label: 'Preparar Mídia',
         content: <MediaBootPanel filePath={report.filePath} />,
+      });
+
+      tabs.push({
+        id: 'execution',
+        label: '⚡ Execução Experimental',
+        content: <ExperimentalExecutionPanel filePath={report.filePath} />,
       });
     }
 

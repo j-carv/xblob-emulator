@@ -1,9 +1,12 @@
 import {
   BootReport,
   BridgeApi,
+  CompatibilityDiagnostic,
   CoreInfo,
+  ExecutionBudgets,
   GpuFrameSnapshot,
   MachinePrepareDiagnostic,
+  MachineSnapshot,
   MediaReport,
   VfsDirectoryPage,
   VfsEntry,
@@ -11,15 +14,18 @@ import {
 
 export class MockBridge implements BridgeApi {
   private mockFilePickerSequence = 0;
+  private mockMachineState: 'Created' | 'Prepared' | 'Running' | 'Paused' | 'Stopped' = 'Prepared';
+  private mockInstructions = 420;
+  private mockCycles = 1260;
 
   async getCoreInfo(): Promise<CoreInfo> {
     await new Promise((r) => setTimeout(r, 50));
     return {
       abiVersionMajor: 1,
-      abiVersionMinor: 4,
+      abiVersionMinor: 5,
       abiVersionPatch: 0,
       capabilities:
-        1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12),
+        1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14),
       productName: 'xblob',
       productVersion: '0.1.0',
     };
@@ -291,5 +297,111 @@ export class MockBridge implements BridgeApi {
       limit,
       entries: pageEntries,
     };
+  }
+
+  private buildMockSnapshot(state: string, stopReason: string): MachineSnapshot {
+    return {
+      state,
+      stopReasonCode: stopReason,
+      faultEip: 0x00012340,
+      faultEipHex: '0x00012340',
+      activeThreadId: 1,
+      threadCount: 1,
+      currentCycle: this.mockCycles,
+      instructionsExecuted: this.mockInstructions,
+      eventsFired: 12,
+      registers: {
+        eax: 0x00000000,
+        eaxHex: '0x00000000',
+        ecx: 0x00010000,
+        ecxHex: '0x00010000',
+        edx: 0x00000042,
+        edxHex: '0x00000042',
+        ebx: 0x00020000,
+        ebxHex: '0x00020000',
+        esp: 0x03ffef00,
+        espHex: '0x03FFEF00',
+        ebp: 0x03ffef20,
+        ebpHex: '0x03FFEF20',
+        esi: 0x00000000,
+        esiHex: '0x00000000',
+        edi: 0x00000000,
+        ediHex: '0x00000000',
+        eip: 0x00011040,
+        eipHex: '0x00011040',
+        eflags: 0x00000246,
+        eflagsHex: '0x00000246',
+      },
+      stackValid: true,
+      stackWords: [0x00011000, 0x00000001, 0x03ffef40, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000],
+      stackWordsHex: ['0x00011000', '0x00000001', '0x03FFEF40', '0x00000000', '0x00000000', '0x00000000', '0x00000000', '0x00000000'],
+      stopReasonCategory: 'UnsupportedExport',
+      stopReasonSymbol: 'AvSetDisplayMode',
+      stopReasonDetail: 'Kernel export ordinal 6 (AvSetDisplayMode) is not implemented in synthetic kernel HLE.',
+    };
+  }
+
+  async startTitleExecution(
+    _filePath: string,
+    _budgets?: ExecutionBudgets
+  ): Promise<MachineSnapshot> {
+    await new Promise((r) => setTimeout(r, 100));
+    this.mockMachineState = 'Paused';
+    this.mockInstructions += 150;
+    this.mockCycles += 450;
+    return this.buildMockSnapshot('Paused', 'BudgetInstructions');
+  }
+
+  async resumeTitleExecution(_budgets?: ExecutionBudgets): Promise<MachineSnapshot> {
+    await new Promise((r) => setTimeout(r, 80));
+    this.mockMachineState = 'Paused';
+    this.mockInstructions += 200;
+    this.mockCycles += 600;
+    return this.buildMockSnapshot('Paused', 'BudgetInstructions');
+  }
+
+  async pauseTitleExecution(): Promise<MachineSnapshot> {
+    await new Promise((r) => setTimeout(r, 50));
+    this.mockMachineState = 'Paused';
+    return this.buildMockSnapshot('Paused', 'Paused');
+  }
+
+  async stopTitleExecution(): Promise<MachineSnapshot> {
+    await new Promise((r) => setTimeout(r, 50));
+    this.mockMachineState = 'Stopped';
+    return this.buildMockSnapshot('Stopped', 'Halted');
+  }
+
+  async getExecutionSnapshot(): Promise<MachineSnapshot> {
+    await new Promise((r) => setTimeout(r, 30));
+    return this.buildMockSnapshot(this.mockMachineState, 'None');
+  }
+
+  async getCompatibilityDiagnostic(): Promise<CompatibilityDiagnostic> {
+    await new Promise((r) => setTimeout(r, 40));
+    return {
+      firstBlockerCode: 'UnsupportedExport',
+      blockerOrdinalOrOpcode: 6,
+      blockerOrdinalOrOpcodeHex: '0x00000006',
+      blockerThreadId: 1,
+      blockerEip: 0x00012340,
+      blockerEipHex: '0x00012340',
+      blockerCount: 1,
+      blockerCategory: 'Kernel Export',
+      blockerSymbolOrMnemonic: 'AvSetDisplayMode',
+      blockerDetail: 'Ordinal 6 (AvSetDisplayMode) reached without synthetic kernel handler.',
+      totalInstructions: this.mockInstructions,
+      totalCycles: this.mockCycles,
+    };
+  }
+
+  async getExecutionTrace(): Promise<string> {
+    await new Promise((r) => setTimeout(r, 40));
+    return (
+      `[00000000] CPU Reset -> EIP: 0x00011000\n` +
+      `[00000120] Thread 1 Created -> Entry: 0x00011000 Stack: 0x03FFEF00\n` +
+      `[00000450] Kernel Thunk Invoke -> Ordinal 6 (AvSetDisplayMode)\n` +
+      `[00000451] Kernel Unsupported Ordinal -> Stopped with UnsupportedExport`
+    );
   }
 }
