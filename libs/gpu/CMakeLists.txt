@@ -4,6 +4,11 @@ add_library(xblob_gpu STATIC
   src/nv2a_device.cpp
   src/pushbuffer_decoder.cpp
   src/pushbuffer_processor.cpp
+  src/pushbuffer_3d_methods.cpp
+  src/texture_sampler.cpp
+  src/vertex_fetch.cpp
+  src/rasterizer.cpp
+  src/nv2a_3d_context.cpp
 )
 
 target_include_directories(xblob_gpu

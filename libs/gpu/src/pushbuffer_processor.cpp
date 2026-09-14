@@ -1,10 +1,26 @@
 #include "xblob/gpu/pushbuffer_processor.hpp"
 
+#include "pushbuffer_3d_methods.hpp"
+
 namespace xblob::gpu {
 
-PushbufferProcessor::PushbufferProcessor(Nv2aDevice& device) : device_(device) {}
+namespace {
 
-Result<void> PushbufferProcessor::ValidatePacket(const PushbufferPacket& packet) const {
+bool CheckBudgetExhausted(const PushbufferStats& stats, const PushbufferBudgets& b) noexcept {
+    return stats.words_processed >= b.max_words || stats.packets_processed >= b.max_packets ||
+           stats.methods_executed >= b.max_methods || stats.jumps_taken >= b.max_jumps ||
+           stats.vertices_processed >= b.max_vertices ||
+           stats.triangles_rasterized >= b.max_triangles;
+}
+
+} // namespace
+
+PushbufferProcessor::PushbufferProcessor(Nv2aDevice& device) : device_(device) {
+    subchannel_classes_.fill(0);
+    subchannel_classes_[0] = kClassNv097Kelvin3D;
+}
+
+Result<void> PushbufferProcessor::ValidatePacket(const PushbufferPacket& packet) {
     if (packet.opcode == PacketOpcode::Jump) {
         if ((packet.jump_target % 4) != 0) {
             return Error{ErrorCode::InvalidArgument, "Misaligned pushbuffer jump target",
@@ -17,7 +33,10 @@ Result<void> PushbufferProcessor::ValidatePacket(const PushbufferPacket& packet)
         return Error{ErrorCode::InvalidField, "Unknown pushbuffer packet opcode"};
     }
 
-    // Shadow state to validate combined operations in the same packet
+    if (packet.subchannel >= kMaxSubchannels) {
+        return Error{ErrorCode::OutOfBounds, "Invalid subchannel index"};
+    }
+
     u32 temp_rx = rect_x_;
     u32 temp_ry = rect_y_;
     u32 temp_rw = rect_w_;
@@ -28,7 +47,17 @@ Result<void> PushbufferProcessor::ValidatePacket(const PushbufferPacket& packet)
         const u32 val = packet.parameters[i];
 
         switch (method) {
-        case kMethodNop:
+        case kMethodSetObject:
+            if (val != kClassNv097Kelvin3D && val != kClassNv096Kelvin3D &&
+                val != kClassNv062Surface && val != kClassNv01fBlit && val != kClassNv044Video &&
+                val != kClassSynthetic2D) {
+                ctx_3d_.RecordUnsupportedMethod(subchannel_classes_[packet.subchannel], method,
+                                                packet.subchannel, packet.count, val);
+                return Error{ErrorCode::UnsupportedFeature, "Unsupported object class ID", val};
+            }
+            break;
+
+        // 2D Synthetic Legacy Methods
         case kMethodSurfaceWidth:
         case kMethodSurfaceHeight:
         case kMethodSurfacePitch:
@@ -57,9 +86,16 @@ Result<void> PushbufferProcessor::ValidatePacket(const PushbufferPacket& packet)
             }
             break;
         }
-        default:
-            return Error{ErrorCode::UnsupportedFeature, "Unsupported pushbuffer method offset",
-                         method};
+
+        default: {
+            auto res_3d = detail::Validate3dMethod(method, val, packet.count, packet.subchannel,
+                                                   subchannel_classes_[packet.subchannel], ctx_3d_,
+                                                   memory_reader_);
+            if (!res_3d.has_value()) {
+                return res_3d;
+            }
+            break;
+        }
         }
     }
 
@@ -76,8 +112,11 @@ Result<void> PushbufferProcessor::ApplyPacket(const PushbufferPacket& packet) {
         const u32 val = packet.parameters[i];
 
         switch (method) {
-        case kMethodNop:
+        case kMethodSetObject:
+            subchannel_classes_[packet.subchannel] = val;
             break;
+
+        // 2D Legacy
         case kMethodSurfaceWidth:
             surface_w_ = val;
             break;
@@ -90,14 +129,10 @@ Result<void> PushbufferProcessor::ApplyPacket(const PushbufferPacket& packet) {
         case kMethodClearColor:
             clear_color_ = val;
             break;
-        case kMethodClearSurface: {
-            const u8 r = static_cast<u8>(clear_color_ & 0xFF);
-            const u8 g = static_cast<u8>((clear_color_ >> 8) & 0xFF);
-            const u8 b = static_cast<u8>((clear_color_ >> 16) & 0xFF);
-            const u8 a = static_cast<u8>((clear_color_ >> 24) & 0xFF);
-            device_.back_surface().Clear(r, g, b, a);
+        case kMethodClearSurface:
+            device_.back_surface().Clear(clear_color_ & 0xFF, (clear_color_ >> 8) & 0xFF,
+                                         (clear_color_ >> 16) & 0xFF, (clear_color_ >> 24) & 0xFF);
             break;
-        }
         case kMethodRectX:
             rect_x_ = val;
             break;
@@ -113,18 +148,18 @@ Result<void> PushbufferProcessor::ApplyPacket(const PushbufferPacket& packet) {
         case kMethodRectColor:
             rect_color_ = val;
             break;
-        case kMethodRectDraw: {
-            const u8 r = static_cast<u8>(rect_color_ & 0xFF);
-            const u8 g = static_cast<u8>((rect_color_ >> 8) & 0xFF);
-            const u8 b = static_cast<u8>((rect_color_ >> 16) & 0xFF);
-            const u8 a = static_cast<u8>((rect_color_ >> 24) & 0xFF);
-            (void)device_.back_surface().FillRect(rect_x_, rect_y_, rect_w_, rect_h_, r, g, b, a);
+        case kMethodRectDraw:
+            (void)device_.back_surface().FillRect(
+                rect_x_, rect_y_, rect_w_, rect_h_, rect_color_ & 0xFF, (rect_color_ >> 8) & 0xFF,
+                (rect_color_ >> 16) & 0xFF, (rect_color_ >> 24) & 0xFF);
             break;
-        }
         case kMethodFlip:
             device_.Flip();
             break;
+
         default:
+            (void)detail::Apply3dMethod(method, val, ctx_3d_, device_.back_surface(), stats_,
+                                        memory_reader_);
             break;
         }
 
@@ -137,10 +172,17 @@ Result<void> PushbufferProcessor::ApplyPacket(const PushbufferPacket& packet) {
 Result<void> PushbufferProcessor::ExecutePacket(const PushbufferPacket& packet) {
     auto val_res = ValidatePacket(packet);
     if (!val_res.has_value()) {
-        if (val_res.error().code == ErrorCode::OutOfBounds) {
+        const auto code = val_res.error().code;
+        if (code == ErrorCode::OutOfBounds) {
             device_.SetFault(GpuFault::InvalidCoordinates);
-        } else if (val_res.error().code == ErrorCode::UnsupportedFeature) {
-            device_.SetFault(GpuFault::UnknownMethod);
+        } else if (code == ErrorCode::UnsupportedFeature) {
+            const bool is_tex =
+                val_res.error().message.find("texture format") != std::string_view::npos;
+            device_.SetFault(is_tex ? GpuFault::UnsupportedTextureFormat : GpuFault::UnknownMethod);
+        } else if (code == ErrorCode::LimitReached) {
+            device_.SetFault(GpuFault::BudgetExhausted);
+        } else if (code == ErrorCode::InvalidState) {
+            device_.SetFault(GpuFault::InvalidState);
         } else {
             device_.SetFault(GpuFault::UnknownOpcode);
         }
@@ -156,10 +198,7 @@ Result<PushbufferStats> PushbufferProcessor::ExecuteBuffer(std::span<const u32> 
     std::unordered_set<std::size_t> visited_offsets;
 
     while (offset < words.size()) {
-        if (stats_.words_processed >= budgets.max_words ||
-            stats_.packets_processed >= budgets.max_packets ||
-            stats_.methods_executed >= budgets.max_methods ||
-            stats_.jumps_taken >= budgets.max_jumps) {
+        if (CheckBudgetExhausted(stats_, budgets)) {
             device_.SetFault(GpuFault::BudgetExhausted);
             return Error{ErrorCode::LimitReached, "Pushbuffer budget exhausted"};
         }
@@ -191,7 +230,6 @@ Result<PushbufferStats> PushbufferProcessor::ExecuteBuffer(std::span<const u32> 
             }
 
             if (visited_offsets.contains(target_word_idx)) {
-                // Loop detected!
                 device_.SetFault(GpuFault::BudgetExhausted);
                 return Error{ErrorCode::LimitReached, "Cyclic pushbuffer loop detected"};
             }
@@ -217,12 +255,10 @@ Result<PushbufferStats> PushbufferProcessor::ExecuteFromMemory(GuestAddr start_a
     GuestAddr current_addr = start_addr;
     u32 words_remaining = max_words;
     std::unordered_set<GuestAddr> visited_addrs;
+    memory_reader_ = reader;
 
     while (words_remaining > 0) {
-        if (stats_.words_processed >= budgets.max_words ||
-            stats_.packets_processed >= budgets.max_packets ||
-            stats_.methods_executed >= budgets.max_methods ||
-            stats_.jumps_taken >= budgets.max_jumps) {
+        if (CheckBudgetExhausted(stats_, budgets)) {
             device_.SetFault(GpuFault::BudgetExhausted);
             return Error{ErrorCode::LimitReached, "Pushbuffer budget exhausted"};
         }

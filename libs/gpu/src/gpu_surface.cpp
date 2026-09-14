@@ -83,6 +83,18 @@ Result<void> GpuSurface::FillRect(u32 x, u32 y, u32 w, u32 h, u8 r, u8 g, u8 b, 
     return {};
 }
 
+Result<void> GpuSurface::SetPixel(u32 x, u32 y, u8 r, u8 g, u8 b, u8 a) noexcept {
+    if (x >= width_ || y >= height_) {
+        return Error{ErrorCode::OutOfBounds, "Pixel coordinates out of bounds"};
+    }
+    const u32 offset = y * pitch_ + x * 4;
+    pixels_[offset + 0] = r;
+    pixels_[offset + 1] = g;
+    pixels_[offset + 2] = b;
+    pixels_[offset + 3] = a;
+    return {};
+}
+
 Result<u32> GpuSurface::GetPixel(u32 x, u32 y) const noexcept {
     if (x >= width_ || y >= height_) {
         return Error{ErrorCode::OutOfBounds, "Pixel coordinates out of bounds"};

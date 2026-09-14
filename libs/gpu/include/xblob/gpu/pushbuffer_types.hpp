@@ -46,6 +46,7 @@ constexpr u32 kMethodFlip = 0x0180;
 struct PushbufferPacket {
     PacketOpcode opcode{PacketOpcode::Method};
     u32 method{0};
+    u32 subchannel{0};
     u32 count{0};
     bool non_incrementing{false};
     GuestAddr jump_target{0};
@@ -57,6 +58,8 @@ struct PushbufferBudgets {
     u32 max_packets{4096};
     u32 max_methods{16384};
     u32 max_jumps{64};
+    u32 max_vertices{65536};
+    u32 max_triangles{32768};
 };
 
 struct PushbufferStats {
@@ -64,6 +67,8 @@ struct PushbufferStats {
     u32 packets_processed{0};
     u32 methods_executed{0};
     u32 jumps_taken{0};
+    u32 vertices_processed{0};
+    u32 triangles_rasterized{0};
 };
 
 } // namespace xblob::gpu

@@ -22,9 +22,11 @@ public:
     [[nodiscard]] u32 byte_size() const noexcept { return byte_size_; }
     [[nodiscard]] u64 sequence_number() const noexcept { return sequence_number_; }
     [[nodiscard]] const std::vector<u8>& data() const noexcept { return pixels_; }
+    [[nodiscard]] std::vector<u8>& mutable_data() noexcept { return pixels_; }
 
     void Clear(u8 r, u8 g, u8 b, u8 a) noexcept;
     Result<void> FillRect(u32 x, u32 y, u32 w, u32 h, u8 r, u8 g, u8 b, u8 a);
+    Result<void> SetPixel(u32 x, u32 y, u8 r, u8 g, u8 b, u8 a) noexcept;
 
     [[nodiscard]] Result<u32> GetPixel(u32 x, u32 y) const noexcept;
     [[nodiscard]] Result<std::size_t> CopyRawPixels(std::span<u8> destination) const noexcept;
