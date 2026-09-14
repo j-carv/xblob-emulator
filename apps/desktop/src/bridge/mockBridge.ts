@@ -5,9 +5,12 @@ import {
   CoreInfo,
   ExecutionBudgets,
   GpuFrameSnapshot,
+  HostInputSnapshot,
+  InteractiveFrame,
   MachinePrepareDiagnostic,
   MachineSnapshot,
   MediaReport,
+  UnsupportedFeatureEntry,
   VfsDirectoryPage,
   VfsEntry,
 } from './types';
@@ -17,15 +20,17 @@ export class MockBridge implements BridgeApi {
   private mockMachineState: 'Created' | 'Prepared' | 'Running' | 'Paused' | 'Stopped' = 'Prepared';
   private mockInstructions = 420;
   private mockCycles = 1260;
+  private mockFrameSequence = 1;
+  private mockInputSequence = 0;
 
   async getCoreInfo(): Promise<CoreInfo> {
     await new Promise((r) => setTimeout(r, 50));
     return {
       abiVersionMajor: 1,
-      abiVersionMinor: 5,
+      abiVersionMinor: 6,
       abiVersionPatch: 0,
       capabilities:
-        1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14),
+        1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15) | (1 << 16) | (1 << 17) | (1 << 18),
       productName: 'xblob',
       productVersion: '0.1.0',
     };
@@ -403,5 +408,79 @@ export class MockBridge implements BridgeApi {
       `[00000450] Kernel Thunk Invoke -> Ordinal 6 (AvSetDisplayMode)\n` +
       `[00000451] Kernel Unsupported Ordinal -> Stopped with UnsupportedExport`
     );
+  }
+
+  async stepTitleExecution(instructionBudget?: number): Promise<MachineSnapshot> {
+    await new Promise((r) => setTimeout(r, 30));
+    this.mockInstructions += instructionBudget ?? 1;
+    this.mockCycles += (instructionBudget ?? 1) * 3;
+    this.mockMachineState = 'Paused';
+    return this.buildMockSnapshot('Paused', 'StepCompleted');
+  }
+
+  async submitHostInput(snapshot: HostInputSnapshot): Promise<boolean> {
+    await new Promise((r) => setTimeout(r, 10));
+    if (snapshot.sequence <= this.mockInputSequence) {
+      return false;
+    }
+    this.mockInputSequence = snapshot.sequence;
+    return true;
+  }
+
+  async getInteractiveFrame(lastFrameSequence: number, fetchPixels: boolean): Promise<InteractiveFrame> {
+    await new Promise((r) => setTimeout(r, 15));
+    if (this.mockMachineState === 'Running') {
+      this.mockFrameSequence++;
+      this.mockInstructions += 100;
+      this.mockCycles += 300;
+    }
+    const hasNewFrame = this.mockFrameSequence > lastFrameSequence;
+    return {
+      frameSequence: this.mockFrameSequence,
+      inputSequence: this.mockInputSequence,
+      width: 640,
+      height: 480,
+      pitch: 2560,
+      pixelFormat: 1,
+      hasNewFrame,
+      pixelsBase64: fetchPixels && hasNewFrame ? btoa('XB_MOCK_FRAME_PIXELS_RGBA8_DATA') : undefined,
+      rumble: {
+        leftMotor: 0,
+        rightMotor: 0,
+      },
+      metrics: {
+        frameSequence: this.mockFrameSequence,
+        inputSequence: this.mockInputSequence,
+        instructionsExecuted: this.mockInstructions,
+        cyclesConsumed: this.mockCycles,
+        unsupportedGpuCount: 0,
+        unsupportedUsbCount: 0,
+        state: this.mockMachineState,
+        stopReason: 'None',
+      },
+    };
+  }
+
+  async getUnsupportedFeatures(offset: number, limit: number): Promise<UnsupportedFeatureEntry[]> {
+    await new Promise((r) => setTimeout(r, 20));
+    const entries: UnsupportedFeatureEntry[] = [
+      {
+        subsystem: 'GPU',
+        capability: 'NV2A Method 0x1D94',
+        identifier: 0x1D94,
+        identifierHex: '0x1D94',
+        count: 1,
+        firstContext: 'Subchannel 0, Class 0x0097, Param 0x00000001',
+      },
+      {
+        subsystem: 'USB',
+        capability: 'USB Request 0x09 (Type 0x21)',
+        identifier: 0x2109,
+        identifierHex: '0x2109',
+        count: 2,
+        firstContext: 'Value 0x0200, Index 0x0000',
+      },
+    ];
+    return entries.slice(offset, offset + limit);
   }
 }

@@ -6,7 +6,7 @@ Este documento descreve a organização arquitetural do emulador **xblob**, disc
 
 ## 1. Estado Atual Implementado vs. Arquitetura-Alvo
 
-| Dimensão | Estado Atual (Marco 6: Sistema de Arquivos XDVDFS, VFS Virtual, Boot de Mídia e Kernel File Services HLE) | Arquitetura-Alvo Completa |
+| Dimensão | Estado Atual (Marco 8: Fundação Gráfica e de Entrada Interativa) | Arquitetura-Alvo Completa |
 | :--- | :--- | :--- |
 | **Escopo** | I/O seguro, streaming subrange, leitor XDVDFS defensivo, VFS read-only com handles geracionais, pipeline de boot por conteúdo com rollback, barramento convidado, cabeçalho PCI Type 0, paginação IA-32 de 4 KiB, loader transacional, CPU IA-32 transacional, Kernel HLE com serviços de arquivos, GPU NV2A com superfície linear RGBA8 e pushbuffer, trace buffer, ABI C 1.4 e UI desktop com navegador VFS e preparação de mídia | Emulação completa de hardware e software do console Xbox original (2001) para execução local de mídias fornecidas pelo usuário (.xbe, .iso, .xiso) |
 | **Execução de Código** | Execução diagnóstica de instruções IA-32 sintéticas com orçamentos determinísticos, preparação transacional de executáveis XBE e imagens de disco ISO/XISO, serviços de arquivos HLE e comandos 2D via pushbuffer NV2A. **A emulação interativa de jogos comerciais é a meta final do projeto e ainda não executa neste marco** | CPU x86 (intérprete de referência e JIT dinâmico), HLE de Kernel e LLE seletivo para jogos do usuário |
@@ -15,7 +15,7 @@ Este documento descreve a organização arquitetural do emulador **xblob**, disc
 | **Suporte a Mídia** | Executáveis XBE e imagens de disco ISO/XISO (raw e trimmed) montáveis via XDVDFS, com localização automática de `default.xbe`, preparação de sessão e navegação paginada | Discos físicos, dumps ISO/XISO, partição de HDD FATX, cartões de memória |
 
 > [!IMPORTANT]
-> **Aviso de Honestidade Técnica**: O projeto encontra-se atualmente no **Marco 6**. A meta final do emulador é carregar e executar títulos `.xbe`, `.iso` e `.xiso` fornecidos legalmente pelo usuário. No marco atual, o emulador monta discos XDVDFS, navega em seus arquivos, prepara sessões de máquina de forma transacional e atende chamadas de I/O do kernel convidado. **Ainda não executa jogos comerciais**, limitando-se à execução diagnóstica de fixtures sintéticas, validação estática de formatos e teste da cadeia de boot e gráficos. O repositório e os testes jamais distribuem ou dependem de jogos, BIOS, chaves, firmware ou SDKs proprietários.
+> **Aviso de Honestidade Técnica**: O projeto encontra-se atualmente no **Marco 8**. A meta final do emulador é carregar e executar títulos `.xbe`, `.iso` e `.xiso` fornecidos legalmente pelo usuário. No marco atual, o emulador monta discos XDVDFS, navega em seus arquivos, prepara sessões de máquina de forma transacional e atende chamadas de I/O do kernel convidado. **Ainda não executa jogos comerciais**, limitando-se à execução diagnóstica de fixtures sintéticas, validação estática de formatos e teste da cadeia de boot e gráficos. O repositório e os testes jamais distribuem ou dependem de jogos, BIOS, chaves, firmware ou SDKs proprietários.
 
 ---
 
@@ -280,10 +280,12 @@ A fundação desktop do xblob conecta a interface visual ao motor de preservaç�
   - `libs/kernel`: Módulo `file_services` com NtCreateFile, NtReadFile, NtWriteFile, SetFilePointer, NtClose, NtQueryInformationFile, NtQueryDirectoryFile, validação prévia de buffers e rejeição de I/O assíncrono com `STATUS_NOT_SUPPORTED`.
   - `libs/c_api`: ABI C 1.4 retrocompatível, novas capacidades e navegador VFS paginado two-call.
   - `apps/desktop`: Componente React `XdvdfsBrowser` acessível (WCAG 2.2 AA) e paginado, e fluxo dedicado "Preparar mídia" no `MediaBootPanel`.
-- **Marco 7: Sistema de Arquivos FATX, Entradas USB e Áudio MCPX (Próximo)**
-  - Parser de partição e sistemas de arquivos FATX para o VFS.
-  - Emulação de controlador USB Xbox (gamepads).
-  - Áudio básico MCPX / AC97.
-- **Marco 8: Pipeline de Execução Completo e JIT Dinâmico**
+- **Marco 7: Execução Experimental e Serviços de Kernel (Concluído)**
+  - Worker assíncrono, orçamentos, snapshots e diagnóstico de primeiro bloqueador.
+- **Marco 8: Fundação Gráfica e de Entrada Interativa (Concluído)**
+  - NV2A 3D de referência, OHCI/XID, IRQ, snapshots de input thread-safe e pacing/backpressure bounded.
+  - ABI C 1.6, adaptadores Rust/Tauri e painel React acessível para apresentação contínua.
+  - A execução interativa de jogos comerciais permanece meta futura; a validação versionada usa somente fixtures sintéticas.
+- **Próximo marco: Pipeline de Execução Completo e JIT Dinâmico**
   - Pipeline de execução unificada para carregar e rodar jogos comerciais fornecidos pelo usuário.
   - Compilador JIT x86-para-ARM64 / x86-para-x86_64.

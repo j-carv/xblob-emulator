@@ -106,11 +106,31 @@ struct MachineSnapshot {
     std::string error_message;
 };
 
+struct UnsupportedFeatureEntry {
+    std::string subsystem;
+    std::string capability;
+    u32 identifier{0};
+    u64 count{0};
+    std::string first_context;
+};
+
+struct InteractiveMetrics {
+    u64 frame_sequence{0};
+    u64 input_sequence{0};
+    u64 instructions_executed{0};
+    Cycle cycles_consumed{0};
+    u32 unsupported_gpu_count{0};
+    u32 unsupported_usb_count{0};
+    u8 state_val{0};
+    StopReasonCode stop_reason{StopReasonCode::None};
+};
+
 struct CompatibilityDiagnostic {
     StopReason first_blocker{};
     u64 total_instructions{0};
     u64 total_cycles{0};
     std::vector<TraceEvent> recent_trace{};
+    std::vector<UnsupportedFeatureEntry> unsupported_features{};
 };
 
 } // namespace xblob::machine

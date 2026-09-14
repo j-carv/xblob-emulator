@@ -561,6 +561,107 @@ impl SafeMachineSession {
         })?;
         Ok(c_str.to_string_lossy().into_owned())
     }
+
+    pub fn step(&self, budget: u64) -> Result<XblobMachineExecutionResult, FfiError> {
+        let mut res = XblobMachineExecutionResult {
+            struct_size: std::mem::size_of::<XblobMachineExecutionResult>() as u32,
+            state: XBLOB_MACHINE_STATE_CREATED,
+            instructions_executed: 0,
+            cycles_consumed: 0,
+        };
+        let status = unsafe { xblob_machine_step(self.handle, budget, &mut res) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(res)
+    }
+
+    pub fn submit_input(&self, snapshot: &XblobHostInputSnapshot) -> Result<bool, FfiError> {
+        let mut accepted: std::os::raw::c_int = 0;
+        let status = unsafe { xblob_machine_submit_input(self.handle, snapshot, &mut accepted) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(accepted != 0)
+    }
+
+    pub fn get_interactive_metrics(&self) -> Result<XblobInteractiveMetrics, FfiError> {
+        let mut metrics = XblobInteractiveMetrics {
+            struct_size: std::mem::size_of::<XblobInteractiveMetrics>() as u32,
+            frame_sequence: 0,
+            input_sequence: 0,
+            instructions_executed: 0,
+            cycles_consumed: 0,
+            unsupported_gpu_count: 0,
+            unsupported_usb_count: 0,
+            state: XBLOB_MACHINE_STATE_CREATED,
+            stop_reason_code: XBLOB_STOP_REASON_NONE,
+        };
+        let status =
+            unsafe { xblob_machine_get_interactive_metrics(self.handle as _, &mut metrics) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(metrics)
+    }
+
+    pub fn get_rumble_state(&self) -> Result<XblobRumbleState, FfiError> {
+        let mut rumble = XblobRumbleState {
+            struct_size: std::mem::size_of::<XblobRumbleState>() as u32,
+            left_motor: 0,
+            right_motor: 0,
+        };
+        let status = unsafe { xblob_machine_get_rumble_state(self.handle as _, &mut rumble) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(rumble)
+    }
+
+    pub fn get_unsupported_features(
+        &self,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<XblobUnsupportedFeatureEntry>, FfiError> {
+        let mut total_count: u32 = 0;
+        let status = unsafe {
+            xblob_machine_get_unsupported_features_count(self.handle as _, &mut total_count)
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        if total_count == 0 || offset >= total_count || limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let fetch_count = (total_count - offset).min(limit);
+        let dummy = XblobUnsupportedFeatureEntry {
+            subsystem: [0; 32],
+            capability: [0; 64],
+            identifier: 0,
+            count: 0,
+            first_context: [0; 128],
+        };
+        let mut entries = vec![dummy; fetch_count as usize];
+        let mut inout_count = fetch_count;
+
+        let status = unsafe {
+            xblob_machine_get_unsupported_features(
+                self.handle as _,
+                offset,
+                limit,
+                entries.as_mut_ptr(),
+                &mut inout_count,
+            )
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+
+        entries.truncate(inout_count as usize);
+        Ok(entries)
+    }
 }
 
 impl Drop for SafeMachineSession {

@@ -82,6 +82,14 @@ fn main() {
             dst.display()
         );
         println!(
+            "cargo:rustc-link-search=native={}/build/libs/usb",
+            dst.display()
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/build/libs/input",
+            dst.display()
+        );
+        println!(
             "cargo:rustc-link-search=native={}/build/libs/common",
             dst.display()
         );
@@ -89,6 +97,8 @@ fn main() {
 
     println!("cargo:rustc-link-lib=static=xblob_c_api");
     println!("cargo:rustc-link-lib=static=xblob_machine");
+    println!("cargo:rustc-link-lib=static=xblob_input");
+    println!("cargo:rustc-link-lib=static=xblob_usb");
     println!("cargo:rustc-link-lib=static=xblob_vfs");
     println!("cargo:rustc-link-lib=static=xblob_gpu");
     println!("cargo:rustc-link-lib=static=xblob_pci");

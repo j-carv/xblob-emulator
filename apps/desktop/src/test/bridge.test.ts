@@ -17,7 +17,7 @@ describe('Bridge layer and DTOs', () => {
     const info = await bridge.getCoreInfo();
 
     expect(info.abiVersionMajor).toBe(1);
-    expect(info.abiVersionMinor).toBe(5);
+    expect(info.abiVersionMinor).toBe(6);
     expect(info.abiVersionPatch).toBe(0);
     expect(info.capabilities).toBeGreaterThan(0);
     expect(info.capabilities & (1 << 9)).toBeGreaterThan(0);
@@ -26,6 +26,10 @@ describe('Bridge layer and DTOs', () => {
     expect(info.capabilities & (1 << 12)).toBeGreaterThan(0);
     expect(info.capabilities & (1 << 13)).toBeGreaterThan(0);
     expect(info.capabilities & (1 << 14)).toBeGreaterThan(0);
+    expect(info.capabilities & (1 << 15)).toBeGreaterThan(0);
+    expect(info.capabilities & (1 << 16)).toBeGreaterThan(0);
+    expect(info.capabilities & (1 << 17)).toBeGreaterThan(0);
+    expect(info.capabilities & (1 << 18)).toBeGreaterThan(0);
     expect(info.productName).toBe('xblob');
     expect(info.productVersion).toBe('0.1.0');
   });
@@ -200,5 +204,67 @@ describe('Bridge layer and DTOs', () => {
 
     const stopSnap = await bridge.stopTitleExecution();
     expect(stopSnap.state).toBe('Stopped');
+  });
+
+  it('should handle interactive input, frame polling, and unsupported feature telemetry', async () => {
+    const bridge = new MockBridge();
+
+    // Submit host input snapshot
+    const accepted1 = await bridge.submitHostInput({
+      sequence: 1,
+      connected: true,
+      digitalButtons: 0x10,
+      buttonA: 255,
+      buttonB: 0,
+      buttonX: 0,
+      buttonY: 0,
+      buttonBlack: 0,
+      buttonWhite: 0,
+      triggerLeft: 0,
+      triggerRight: 0,
+      thumbLx: 1000,
+      thumbLy: 0,
+      thumbRx: 0,
+      thumbRy: 0,
+    });
+    expect(accepted1).toBe(true);
+
+    // Stale input should be rejected
+    const acceptedStale = await bridge.submitHostInput({
+      sequence: 1,
+      connected: true,
+      digitalButtons: 0,
+      buttonA: 0,
+      buttonB: 0,
+      buttonX: 0,
+      buttonY: 0,
+      buttonBlack: 0,
+      buttonWhite: 0,
+      triggerLeft: 0,
+      triggerRight: 0,
+      thumbLx: 0,
+      thumbLy: 0,
+      thumbRx: 0,
+      thumbRy: 0,
+    });
+    expect(acceptedStale).toBe(false);
+
+    // Poll interactive frame
+    const frame = await bridge.getInteractiveFrame(0, true);
+    expect(frame.frameSequence).toBeGreaterThanOrEqual(1);
+    expect(frame.inputSequence).toBe(1);
+    expect(frame.width).toBe(640);
+    expect(frame.height).toBe(480);
+    expect(frame.hasNewFrame).toBe(true);
+
+    // Step title execution
+    const stepSnap = await bridge.stepTitleExecution(5);
+    expect(stepSnap.state).toBe('Paused');
+
+    // Query unsupported features telemetry
+    const unsupp = await bridge.getUnsupportedFeatures(0, 10);
+    expect(unsupp.length).toBeGreaterThan(0);
+    expect(unsupp[0].subsystem).toBe('GPU');
+    expect(unsupp[1].subsystem).toBe('USB');
   });
 });

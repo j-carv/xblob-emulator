@@ -209,6 +209,72 @@ pub struct CompatibilityDiagnosticDto {
     pub total_cycles: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostInputSnapshotDto {
+    pub sequence: u64,
+    pub connected: bool,
+    pub digital_buttons: u8,
+    pub button_a: u8,
+    pub button_b: u8,
+    pub button_x: u8,
+    pub button_y: u8,
+    pub button_black: u8,
+    pub button_white: u8,
+    pub trigger_left: u8,
+    pub trigger_right: u8,
+    pub thumb_lx: i16,
+    pub thumb_ly: i16,
+    pub thumb_rx: i16,
+    pub thumb_ry: i16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InteractiveMetricsDto {
+    pub frame_sequence: u64,
+    pub input_sequence: u64,
+    pub instructions_executed: u64,
+    pub cycles_consumed: u64,
+    pub unsupported_gpu_count: u32,
+    pub unsupported_usb_count: u32,
+    pub state: String,
+    pub stop_reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RumbleStateDto {
+    pub left_motor: u16,
+    pub right_motor: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsupportedFeatureEntryDto {
+    pub subsystem: String,
+    pub capability: String,
+    pub identifier: u32,
+    pub identifier_hex: String,
+    pub count: u64,
+    pub first_context: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InteractiveFrameDto {
+    pub frame_sequence: u64,
+    pub input_sequence: u64,
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+    pub pixel_format: u32,
+    pub has_new_frame: bool,
+    pub pixels_base64: Option<String>,
+    pub rumble: RumbleStateDto,
+    pub metrics: InteractiveMetricsDto,
+}
+
 impl std::fmt::Display for AppErrorDto {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.code, self.message)

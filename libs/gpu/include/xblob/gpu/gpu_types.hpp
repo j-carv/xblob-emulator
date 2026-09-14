@@ -22,6 +22,9 @@ enum class GpuFault : u32 {
     InvalidSurfaceDimensions = 7,
     BudgetExhausted = 8,
     InvalidCoordinates = 9,
+    UnsupportedTextureFormat = 10,
+    InvalidMemoryAccess = 11,
+    InvalidState = 12,
 };
 
 [[nodiscard]] constexpr std::string_view ToString(GpuFault fault) noexcept {
@@ -46,6 +49,12 @@ enum class GpuFault : u32 {
         return "BudgetExhausted";
     case GpuFault::InvalidCoordinates:
         return "InvalidCoordinates";
+    case GpuFault::UnsupportedTextureFormat:
+        return "UnsupportedTextureFormat";
+    case GpuFault::InvalidMemoryAccess:
+        return "InvalidMemoryAccess";
+    case GpuFault::InvalidState:
+        return "InvalidState";
     }
     return "Unknown";
 }

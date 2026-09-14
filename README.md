@@ -4,7 +4,7 @@
 
 ---
 
-### Estado Atual do Projeto: Marco 7 (Execução Experimental de Títulos, CPU IA-32 e Kernel HLE Expandidos, ABI C 1.5)
+### Estado Atual do Projeto: Marco 8 (Fundação Gráfica e de Entrada Interativa, ABI C 1.6)
 
 > [!IMPORTANT]
 > **Aviso de Estado Real**: O projeto encontra-se atualmente no **Marco 7**. 
@@ -19,14 +19,14 @@ Para detalhes sobre o roadmap e as fronteiras de todos os subsistemas planejados
 
 ## Recursos Implementados
 
-- **Execução Experimental de Títulos e Worker Assíncrono (`libs/machine`, `libs/c_api`, `apps/desktop`)**: Worker desacoplado em thread de background com fila de comandos thread-safe (`Start`, `Resume`, `Pause`, `Stop`, `Step`), controle atômico, watchdog cooperativo, orçamentos configuráveis (`ExecutionBudgets`), snapshot estruturado (`MachineSnapshot`), identificação de primeiro bloqueador (`CompatibilityDiagnostic`), rastreamento circular thread-safe (`TraceRingBuffer`) e ABI C 1.5.0 (`XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION`, `XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS`).
+- **Sessão Interativa Experimental (`libs/machine`, `libs/c_api`, `apps/desktop`)**: Integração bounded de NV2A 3D, OHCI/XID, IRQ, snapshots thread-safe, pacing/backpressure de frames e controles acessíveis de teclado/gamepad. A ABI C 1.6 adiciona contratos sized para frame, input, métricas e diagnósticos por capacidade.
 - **Expansão de Instruções IA-32 (`libs/cpu`)**: Suporte a prefixos (`REP`, `REPNE`, `LOCK`, overrides de segmento), shifts/rotates (`SHL`, `SHR`, `SAR`, `ROL`, `ROR`) com preservação estrita de flags em contagem 0, multiplicação inteira (`MUL`, `IMUL` 1/2/3 operandos), divisão inteira (`DIV`, `IDIV`) com prevenção de UB no host e exceção #DE atômica, extensões e bit tests (`MOVZX`, `MOVSX`, `CDQ`, `BT`, `SETcc`), instruções de string (`MOVS`, `STOS`, `LODS`, `CMPS`, `SCAS`) com micro-stepping de `REP` delimitado por budget, e primitivas atômicas (`XCHG`, `CMPXCHG`).
 - **Expansão de Serviços de Kernel HLE (`libs/kernel`)**: Implementação sintética clean-room expandida de serviços de threads e sincronização, queries de tempo, alocação de memória virtual, e despacho de armadilhas INT 0x2D integrado à sessão de máquina.
 - **Sistema de Arquivos XDVDFS e Streaming (`libs/io`, `libs/formats`)**: Leitura sob demanda via `SubrangeByteSource` sem carregar a ISO inteira na memória RAM; parser iterativo defensivo de árvore binária de diretórios (BST) com detecção de ciclos, orçamentos de nós/profundidade e suporte a imagens raw (setor 32 da partição) e trimmed/XISO (setor 32/0).
 - **Sistema de Arquivos Virtual VFS (`libs/vfs`)**: Normalização canônica de caminhos Xbox (`D:\`), prevenção rigorosa contra path traversal (`..`, caracteres inválidos), tabela de handles geracionais com tag de 32 bits contra use-after-free e semântica estritamente somente leitura (`IsReadOnly`).
 - **Pipeline de Boot de Mídia Transacional (`libs/machine`)**: Detecção orientada a conteúdo (XBE direto ou disco XDVDFS), localização case-insensitive de `default.xbe`, carregamento em duas fases (`Plan` e `Apply`) e rollback garantido em caso de erro sem poluir o estado da sessão.
 - **Serviços de Arquivo do Kernel HLE (`libs/kernel`)**: Implementação clean-room dos ordinais 190 (`NtCreateFile`), 219 (`NtReadFile`), 256 (`NtWriteFile`), 224 (`SetFilePointer`), 18 (`NtClose`), 217 (`NtQueryInformationFile`), 216 (`NtQueryDirectoryFile`), com validação atômica de memória guest e rejeição explícita de I/O assíncrono com `STATUS_NOT_SUPPORTED`.
-- **ABI C Estável 1.4 (`libs/c_api`)**: Interface C versionada (1.4.0) retrocompatível com 1.0–1.3, expondo capacidades `XBLOB_CAPABILITY_XDVDFS_VFS` e `XBLOB_CAPABILITY_MEDIA_BOOT`, estruturas `xblob_boot_report_t` e navegador VFS paginado two-call.
+- **ABI C Estável (`libs/c_api`)**: Interface C versionada, com ABI 1.6 retrocompatível com contratos 1.0–1.5 e capacidades NV2A 3D, OHCI, XID e sessão interativa.
 - **Desktop Tauri v2 & React 19 (`apps/desktop`)**: Navegador de arquivos XDVDFS acessível (WCAG 2.2 AA) e paginado (`XdvdfsBrowser`), painel "Preparar mídia" com separação estrita em relação ao estado de gameplay interativo, e shell Rust limitado a FFI/IPC com RAII.
 - **I/O Seguro e Parsing Orientado a Cursor (`libs/common`, `libs/io`)**: Leituras binárias com checagem de faixas e prevenção contra overflow aritmético.
 - **Inspeção de Executáveis XBE e Detecção ISO/XISO (`libs/formats`)**: Validação estrutural de cabeçalhos mágicos, limites de seções e contêineres de disco.

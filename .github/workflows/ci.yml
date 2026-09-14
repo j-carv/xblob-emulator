@@ -18,6 +18,13 @@ jobs:
           sudo apt-get install -y clang-format
       - name: Check Formatting
         run: ./tools/check-format.sh
+      - name: Install OpenSpec
+        run: npm install --global @fission-ai/openspec@1.13.0
+      - name: Validate OpenSpec Changes
+        run: |
+          openspec validate add-interactive-graphics-input-foundation --strict
+          openspec validate expand-nv2a-3d-pipeline --strict
+          openspec validate add-usb-xid-input --strict
 
   build-and-test:
     name: Build & Test (${{ matrix.os }} - ${{ matrix.compiler }})
@@ -123,3 +130,4 @@ jobs:
           npm run typecheck
           npm test
           npm run build
+          npm run tauri -- --version

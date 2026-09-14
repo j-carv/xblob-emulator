@@ -189,6 +189,62 @@ export interface CompatibilityDiagnostic {
   totalCycles: number;
 }
 
+export interface HostInputSnapshot {
+  sequence: number;
+  connected: boolean;
+  digitalButtons: number;
+  buttonA: number;
+  buttonB: number;
+  buttonX: number;
+  buttonY: number;
+  buttonBlack: number;
+  buttonWhite: number;
+  triggerLeft: number;
+  triggerRight: number;
+  thumbLx: number;
+  thumbLy: number;
+  thumbRx: number;
+  thumbRy: number;
+}
+
+export interface RumbleState {
+  leftMotor: number;
+  rightMotor: number;
+}
+
+export interface InteractiveMetrics {
+  frameSequence: number;
+  inputSequence: number;
+  instructionsExecuted: number;
+  cyclesConsumed: number;
+  unsupportedGpuCount: number;
+  unsupportedUsbCount: number;
+  state: string;
+  stopReason: string;
+}
+
+export interface UnsupportedFeatureEntry {
+  subsystem: string;
+  capability: string;
+  identifier: number;
+  identifierHex: string;
+  count: number;
+  firstContext: string;
+}
+
+export interface InteractiveFrame {
+  frameSequence: number;
+  inputSequence: number;
+  width: number;
+  height: number;
+  pitch: number;
+  pixelFormat: number;
+  hasNewFrame: boolean;
+  pixelsBase64?: string;
+  rumble: RumbleState;
+  metrics: InteractiveMetrics;
+}
+
 export interface BridgeApi {
   getCoreInfo(): Promise<CoreInfo>;
   inspectMedia(filePath: string): Promise<MediaReport>;
@@ -201,7 +257,11 @@ export interface BridgeApi {
   resumeTitleExecution(budgets?: ExecutionBudgets): Promise<MachineSnapshot>;
   pauseTitleExecution(): Promise<MachineSnapshot>;
   stopTitleExecution(): Promise<MachineSnapshot>;
+  stepTitleExecution(instructionBudget?: number): Promise<MachineSnapshot>;
   getExecutionSnapshot(): Promise<MachineSnapshot>;
   getCompatibilityDiagnostic(): Promise<CompatibilityDiagnostic>;
   getExecutionTrace(): Promise<string>;
+  submitHostInput(snapshot: HostInputSnapshot): Promise<boolean>;
+  getInteractiveFrame(lastFrameSequence: number, fetchPixels: boolean): Promise<InteractiveFrame>;
+  getUnsupportedFeatures(offset: number, limit: number): Promise<UnsupportedFeatureEntry[]>;
 }

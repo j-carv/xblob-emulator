@@ -35,11 +35,15 @@ O desenvolvimento apoia-se estritamente em documentações públicas e literatur
    - Documentações públicas de código aberto de arquitetura gráfica NV2A / GeForce 3 / Xbox (nouveau, especificações abertas de registradores NV20/NV2A).
    - Protocolo de comandos Pushbuffer (métodos, subcanais, pacotes Method/Non-Inc) derivados estritamente de especificações públicas.
    - Desacoplamento total de APIs gráficas proprietárias e isolamento em superfícies RGBA8 puras em memória de host.
-5. **Sistema de Arquivos XDVDFS e Mídia Xbox**:
+5. **USB OHCI e XID**:
+   - Contratos derivados de especificações públicas de USB/OHCI e descrições públicas de dispositivos de entrada Xbox.
+   - O controlador, transfers e relatórios XID são implementados como modelos bounded; não há firmware, dumps ou APIs proprietárias.
+   - Estados de host são injetados por snapshots normalizados, sem heurísticas de título.
+6. **Sistema de Arquivos XDVDFS e Mídia Xbox**:
    - Especificações públicas de sistemas de arquivos de disco do console Xbox original (documentação de comunidade, XDVDFS/XISO layout specs).
    - Estrutura de setores (2048 bytes), magic descriptor `"MICROSOFT*XBOX*MEDIA"` nos setores 32 (raw) ou 0 (trimmed).
    - Estrutura da tabela de diretórios em árvore binária (BST com offset esquerdo/direito relativos em palavras de 4 bytes, 14 bytes de cabeçalho por entrada, nomes ASCII sem nulos intermediários).
-6. **Semântica de VFS Xbox e Serviços de Arquivo NT/Kernel**:
+7. **Semântica de VFS Xbox e Serviços de Arquivo NT/Kernel**:
    - Especificações da API NT e documentações públicas de ordinais de exportação do kernel do Xbox (NtCreateFile 190, NtReadFile 219, NtWriteFile 256, SetFilePointer 224, NtClose 18, NtQueryInformationFile 217, NtQueryDirectoryFile 216, NtDeviceIoControlFile 196).
    - Semântica de normalização de caminhos (drive letters como `D:`, separadores de barra invertida, case-insensibilidade, ausência de path traversal `..`).
 
