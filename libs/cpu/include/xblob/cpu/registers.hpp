@@ -44,6 +44,29 @@ struct CpuContext {
 
     void SetGpr(Reg32 reg, u32 val) noexcept { gpr[static_cast<std::size_t>(reg)] = val; }
 
+    [[nodiscard]] u8 GetGpr8(u8 reg8_index) const noexcept {
+        if (reg8_index < 4) {
+            return static_cast<u8>(gpr[reg8_index] & 0xFF);
+        }
+        return static_cast<u8>((gpr[reg8_index - 4] >> 8) & 0xFF);
+    }
+
+    void SetGpr8(u8 reg8_index, u8 val) noexcept {
+        if (reg8_index < 4) {
+            gpr[reg8_index] = (gpr[reg8_index] & ~0xFFU) | val;
+        } else {
+            gpr[reg8_index - 4] = (gpr[reg8_index - 4] & ~0xFF00U) | (static_cast<u32>(val) << 8);
+        }
+    }
+
+    [[nodiscard]] u16 GetGpr16(Reg32 reg) const noexcept {
+        return static_cast<u16>(gpr[static_cast<std::size_t>(reg)] & 0xFFFF);
+    }
+
+    void SetGpr16(Reg32 reg, u16 val) noexcept {
+        gpr[static_cast<std::size_t>(reg)] = (gpr[static_cast<std::size_t>(reg)] & ~0xFFFFU) | val;
+    }
+
     [[nodiscard]] u16 GetSegment(SegmentReg seg) const noexcept {
         return segments[static_cast<std::size_t>(seg)];
     }

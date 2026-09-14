@@ -24,6 +24,7 @@ public:
         if (!res) {
             return res.error();
         }
+        raw_bytes_[length_] = *res;
         length_++;
         return *res;
     }
@@ -64,16 +65,20 @@ public:
 
     [[nodiscard]] u8 length() const noexcept { return length_; }
     [[nodiscard]] GuestAddr start_eip() const noexcept { return eip_; }
+    [[nodiscard]] std::vector<u8> raw_bytes() const {
+        return std::vector<u8>(raw_bytes_.begin(), raw_bytes_.begin() + length_);
+    }
 
 private:
     MemoryType& mem_;
     GuestAddr eip_;
+    std::array<u8, 15> raw_bytes_{};
     u8 length_{0};
 };
 
 template <typename MemoryType>
 Result<std::pair<Operand, u8>> ParseModRm(InstructionStream<MemoryType>& stream,
-                                          const CpuContext& ctx) {
+                                          const CpuContext& ctx, u8 size_bytes = 4) {
     auto b_res = stream.NextByte();
     if (!b_res)
         return b_res.error();
@@ -83,6 +88,12 @@ Result<std::pair<Operand, u8>> ParseModRm(InstructionStream<MemoryType>& stream,
     u8 rm = modrm & 7;
 
     if (mod == 3) {
+        if (size_bytes == 1) {
+            return std::make_pair(Operand::MakeReg8(rm), reg);
+        }
+        if (size_bytes == 2) {
+            return std::make_pair(Operand::MakeReg16(static_cast<Reg32>(rm)), reg);
+        }
         return std::make_pair(Operand::MakeReg(static_cast<Reg32>(rm)), reg);
     }
 
@@ -144,7 +155,7 @@ Result<std::pair<Operand, u8>> ParseModRm(InstructionStream<MemoryType>& stream,
         ea = base_val + scaled_index;
     }
 
-    return std::make_pair(Operand::MakeMem(ea, 4), reg);
+    return std::make_pair(Operand::MakeMem(ea, size_bytes), reg);
 }
 
 } // namespace xblob::cpu::detail

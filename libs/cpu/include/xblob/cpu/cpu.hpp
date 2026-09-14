@@ -5,6 +5,7 @@
 #include "xblob/common/types.hpp"
 #include "xblob/cpu/exceptions.hpp"
 #include "xblob/cpu/flags.hpp"
+#include "xblob/cpu/instruction.hpp"
 #include "xblob/cpu/instructions.hpp"
 #include "xblob/cpu/interrupt_controller.hpp"
 #include "xblob/cpu/registers.hpp"
@@ -50,6 +51,7 @@ struct StepOutcome {
     Cycle cycles_consumed{0};
     std::optional<Error> fault{std::nullopt};
     std::optional<CpuException> exception{std::nullopt};
+    std::optional<UnsupportedFormInfo> unsupported_form{std::nullopt};
 };
 
 enum class RunStatus { Halted, Faulted, BudgetExhausted };
@@ -72,6 +74,7 @@ struct RunOutcome {
     Cycle cycles_consumed{0};
     std::optional<Error> fault{std::nullopt};
     std::optional<CpuException> exception{std::nullopt};
+    std::optional<UnsupportedFormInfo> unsupported_form{std::nullopt};
 };
 
 class Cpu {
@@ -87,6 +90,9 @@ public:
     [[nodiscard]] const std::optional<Error>& last_fault() const noexcept { return last_fault_; }
     [[nodiscard]] const std::optional<CpuException>& last_exception() const noexcept {
         return last_exception_;
+    }
+    [[nodiscard]] const std::optional<UnsupportedFormInfo>& last_unsupported() const noexcept {
+        return last_unsupported_;
     }
 
     void SetInterruptSource(IInterruptSource* source) noexcept { interrupt_source_ = source; }
@@ -125,6 +131,7 @@ private:
     CpuLifecycle lifecycle_{CpuLifecycle::Running};
     std::optional<Error> last_fault_{std::nullopt};
     std::optional<CpuException> last_exception_{std::nullopt};
+    std::optional<UnsupportedFormInfo> last_unsupported_{std::nullopt};
     IInterruptSource* interrupt_source_{nullptr};
     TrapHandler trap_handler_{nullptr};
 };
