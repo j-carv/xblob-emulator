@@ -145,6 +145,13 @@ Result<u32> KernelFileServices::ReadFile(u32 handle_val, GuestAddr buffer_addr, 
     }
 
     size_t actual_read = *read_res;
+    if (actual_read == 0 && bytes_to_read > 0) {
+        if (bytes_read_ptr != 0) {
+            (void)mem.Write32(bytes_read_ptr, 0);
+        }
+        return kNtStatusEndOfFile;
+    }
+
     if (actual_read > 0) {
         auto write_res = mem.WriteBytes(buffer_addr, ByteSpan(temp_buffer.data(), actual_read));
         if (!write_res) {
@@ -336,14 +343,85 @@ Result<u32> KernelFileServices::QueryDirectoryFile(u32 handle_val, GuestAddr out
     return kNtStatusSuccess;
 }
 
-Result<u32> KernelFileServices::DeviceIoControl(u32 /*handle_val*/, u32 /*control_code*/,
-                                                GuestAddr /*in_buf*/, u32 /*in_len*/,
-                                                GuestAddr /*out_buf*/, u32 /*out_len*/,
-                                                GuestAddr /*bytes_returned_ptr*/,
+Result<u32> KernelFileServices::DeviceIoControl(u32 handle_val, u32 control_code, GuestAddr in_buf,
+                                                u32 in_len, GuestAddr out_buf, u32 out_len,
+                                                GuestAddr bytes_returned_ptr,
                                                 GuestAddr overlapped_ptr,
-                                                memory::AddressSpace& /*mem*/) {
+                                                memory::AddressSpace& mem) {
     if (overlapped_ptr != 0) {
+        // Honest unsupported async rejection without invalidating or losing handle
         return kNtStatusNotImplemented;
+    }
+
+    if (!vfs_) {
+        return kNtStatusUnsuccessful;
+    }
+
+    VfsHandle handle = VfsHandle::FromU32(handle_val);
+    if (!handle.IsValid()) {
+        return kNtStatusInvalidHandle;
+    }
+
+    if (in_len > 0) {
+        auto in_val = mem.ValidateRange(in_buf, in_len, memory::MemoryPermission::Read);
+        if (!in_val) {
+            return kNtStatusInvalidParameter;
+        }
+    }
+
+    if (bytes_returned_ptr != 0) {
+        auto ret_val = mem.ValidateRange(bytes_returned_ptr, 4, memory::MemoryPermission::Write);
+        if (!ret_val) {
+            return kNtStatusInvalidParameter;
+        }
+    }
+
+    // IOCTL codes (clean-room public values)
+    constexpr u32 kIoctlDiskGetDriveGeometry = 0x00070000;
+    constexpr u32 kIoctlCdromGetDriveGeometry = 0x00024040;
+    constexpr u32 kIoctlCdromCheckVerify = 0x00024005;
+
+    u32 bytes_returned = 0;
+
+    if (control_code == kIoctlCdromCheckVerify) {
+        // Verification succeeds for mounted volume
+        if (bytes_returned_ptr != 0) {
+            (void)mem.Write32(bytes_returned_ptr, 0);
+        }
+        return kNtStatusSuccess;
+    }
+
+    if (control_code == kIoctlDiskGetDriveGeometry || control_code == kIoctlCdromGetDriveGeometry) {
+        if (out_len < 24) {
+            return kNtStatusInvalidParameter;
+        }
+        auto out_val = mem.ValidateRange(out_buf, 24, memory::MemoryPermission::Write);
+        if (!out_val) {
+            return kNtStatusInvalidParameter;
+        }
+
+        // DISK_GEOMETRY:
+        // Cylinders (8 bytes): 1000
+        // MediaType (4 bytes): 0x0B (RemovableMedia for CD/DVD)
+        // TracksPerCylinder (4 bytes): 64
+        // SectorsPerTrack (4 bytes): 32
+        // BytesPerSector (4 bytes): 2048
+        (void)mem.Write32(out_buf + 0, 1000);
+        (void)mem.Write32(out_buf + 4, 0);
+        (void)mem.Write32(out_buf + 8, 0x0B);
+        (void)mem.Write32(out_buf + 12, 64);
+        (void)mem.Write32(out_buf + 16, 32);
+        (void)mem.Write32(out_buf + 20, 2048);
+
+        bytes_returned = 24;
+        if (bytes_returned_ptr != 0) {
+            (void)mem.Write32(bytes_returned_ptr, bytes_returned);
+        }
+        return kNtStatusSuccess;
+    }
+
+    if (bytes_returned_ptr != 0) {
+        (void)mem.Write32(bytes_returned_ptr, 0);
     }
     return kNtStatusNotImplemented;
 }

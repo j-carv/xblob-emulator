@@ -27,7 +27,18 @@ enum class HandleType : u8 {
     Event = 1,
     Mutex = 2,
     Thread = 3,
+    Semaphore = 4,
+    Timer = 5,
+    File = 6,
 };
+
+// Additional NT status codes
+constexpr u32 kStatusWait0 = 0x00000000;
+constexpr u32 kStatusAlerted = 0x00000101;
+constexpr u32 kStatusConflict = 0xC0000018;
+constexpr u32 kStatusBufferTooSmall = 0xC0000023;
+constexpr u32 kStatusMutantNotOwned = 0xC0000046;
+constexpr u32 kStatusSemaphoreLimitExceeded = 0xC0000047;
 
 struct HandleEntry {
     HandleType type{HandleType::None};
