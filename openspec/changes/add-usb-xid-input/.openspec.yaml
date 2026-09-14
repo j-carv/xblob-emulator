@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-14
+goal: Entregar estado de teclado/gamepad ao guest de forma determinística e
+  multiplataforma.

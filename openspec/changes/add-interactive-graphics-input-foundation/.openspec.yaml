@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-14
+goal: Produzir os primeiros frames 3D e entrada interativa de títulos do usuário
+  sem hacks específicos por jogo.
