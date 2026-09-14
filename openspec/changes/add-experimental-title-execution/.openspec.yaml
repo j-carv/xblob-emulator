@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-14
+goal: Permitir iniciar, pausar, retomar, avançar e parar XBEs preparados,
+  produzindo diagnóstico acionável até a primeira incompatibilidade.

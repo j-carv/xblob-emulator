@@ -161,8 +161,9 @@ Este protocolo estabelece as regras permanentes e mandatórias para execução s
    - É proibido invocar múltiplos agentes compartilhando o mesmo `cwd`.
 2. **Modelo Mandatório**:
    - Subagentes executores em lanes paralelas DEVEM ser configurados obrigatoriamente com o modelo **Gemini 3.8 Flash High**.
-3. **Operação Silenciosa**:
-   - As instruções passadas ao subagente DEVEM exigir trabalho silencioso (sem narrativa intermediária, sem comentários de progresso prolixos), retornando apenas o resumo final estruturado, lista de arquivos alterados, comandos/testes executados e pendências.
+3. **Operação Silenciosa e Limite de Resposta Intermediária**:
+   - As instruções passadas ao subagente DEVEM exigir trabalho silencioso, retornando apenas o resumo final estruturado, lista de arquivos alterados, comandos/testes executados e pendências.
+   - Se o transporte ACP emitir qualquer resposta intermediária inevitável, ela DEVE conter **no máximo uma palavra**. Narrativas, comentários de progresso, explicações e logs intermediários são proibidos; o limite não se aplica ao relatório final.
 4. **Registro de Task ID e Retomada**:
    - Toda sessão paralela DEVE registrar o task ID retornado pelo orquestrador no manifesto local (`.worktrees/manifest.json`).
    - Havendo interrupção de contexto, desconexão ou continuação entre sessões futuras, a retomada de uma tarefa inacabada DEVE ocorrer estritamente no mesmo worktree e no mesmo `cwd`, preservando o histórico do branch `agent/<parent>/<lane>`.
