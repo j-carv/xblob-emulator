@@ -28,6 +28,7 @@ Result<PushbufferPacket> PushbufferDecoder::DecodeFromSpan(std::span<const u32> 
 
     PushbufferPacket pkt;
     pkt.opcode = PacketOpcode::Method;
+    pkt.subchannel = (header >> 13) & 0x07u;
     pkt.method = header & 0x00001FFCu;
     pkt.count = (header >> 18) & 0x000007FFu;
     pkt.non_incrementing = (prefix == 0b10) || ((header & (1u << 29)) != 0);
@@ -77,6 +78,7 @@ Result<PushbufferPacket> PushbufferDecoder::DecodeFromMemory(GuestAddr current_a
 
     PushbufferPacket pkt;
     pkt.opcode = PacketOpcode::Method;
+    pkt.subchannel = (header >> 13) & 0x07u;
     pkt.method = header & 0x00001FFCu;
     pkt.count = (header >> 18) & 0x000007FFu;
     pkt.non_incrementing = (prefix == 0b10) || ((header & (1u << 29)) != 0);

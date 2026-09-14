@@ -235,6 +235,8 @@ TEST_CASE(TestPushbufferBudgetsAndLoopProtection) {
     EXPECT_EQ(dev->fault(), GpuFault::BudgetExhausted);
 }
 
+#include "tests/unit/test_gpu_3d.hpp"
+
 int main() {
     return xblob::testing::RunAllTests();
 }
