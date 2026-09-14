@@ -29,6 +29,22 @@ Result<std::string> GuestContext::ReadString(GuestAddr addr, std::size_t max_len
     return Error{ErrorCode::LimitReached, "String excede tamanho máximo sem terminador nulo"};
 }
 
+Result<u32> GuestContext::Read32(GuestAddr addr) const {
+    return mem.Read32(addr);
+}
+
+Result<void> GuestContext::Write32(GuestAddr addr, u32 val) const {
+    return mem.Write32(addr, val);
+}
+
+Result<void> GuestContext::ReadBytes(GuestAddr addr, MutableByteSpan dest) const {
+    return mem.ReadBytes(addr, dest);
+}
+
+Result<void> GuestContext::WriteBytes(GuestAddr addr, ByteSpan src) const {
+    return mem.WriteBytes(addr, src);
+}
+
 void GuestContext::SetReturnValue(u32 val) noexcept {
     cpu.SetGpr(cpu::Reg32::EAX, val);
 }
@@ -59,8 +75,73 @@ bool ExportRegistry::HasOrdinal(u32 ordinal) const noexcept {
     return exports_.find(ordinal) != exports_.end();
 }
 
+void ExportRegistry::RecordDispatchSuccess() noexcept {
+    total_dispatches_++;
+    successful_dispatches_++;
+}
+
+void ExportRegistry::RecordDispatchFailure() noexcept {
+    total_dispatches_++;
+    failed_dispatches_++;
+}
+
+void ExportRegistry::RecordUnsupportedExport(u32 ordinal, ThreadId tid, GuestAddr eip,
+                                             const std::vector<u32>& args, std::string_view name) {
+    total_dispatches_++;
+    unsupported_dispatches_++;
+
+    if (unsupported_counts_.size() < kMaxTrackedUnsupportedOrdinals ||
+        unsupported_counts_.find(ordinal) != unsupported_counts_.end()) {
+        unsupported_counts_[ordinal]++;
+    }
+
+    UnsupportedExportInfo info;
+    info.ordinal = ordinal;
+    info.thread_id = tid;
+    info.eip = eip;
+    info.call_count = unsupported_counts_[ordinal];
+    info.recorded_args = args;
+    info.name = std::string(name);
+
+    last_unsupported_ = info;
+
+    if (unsupported_history_.size() >= kMaxUnsupportedHistory) {
+        unsupported_history_.pop_front();
+    }
+    unsupported_history_.push_back(std::move(info));
+}
+
+u64 ExportRegistry::GetUnsupportedCallCount(u32 ordinal) const noexcept {
+    auto it = unsupported_counts_.find(ordinal);
+    if (it != unsupported_counts_.end()) {
+        return it->second;
+    }
+    return 0;
+}
+
+RegistryStats ExportRegistry::GetStats() const noexcept {
+    RegistryStats stats;
+    stats.total_dispatches = total_dispatches_;
+    stats.successful_dispatches = successful_dispatches_;
+    stats.unsupported_dispatches = unsupported_dispatches_;
+    stats.failed_dispatches = failed_dispatches_;
+    stats.registered_export_count = exports_.size();
+    return stats;
+}
+
+void ExportRegistry::ResetStats() noexcept {
+    unsupported_counts_.clear();
+    unsupported_history_.clear();
+    last_unsupported_.reset();
+    total_dispatches_ = 0;
+    successful_dispatches_ = 0;
+    unsupported_dispatches_ = 0;
+    failed_dispatches_ = 0;
+}
+
 void ExportRegistry::Clear() noexcept {
     exports_.clear();
+    ResetStats();
 }
 
 } // namespace xblob::kernel
