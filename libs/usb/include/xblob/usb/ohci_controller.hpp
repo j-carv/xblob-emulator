@@ -10,12 +10,16 @@
 #include <array>
 #include <memory>
 
+namespace xblob::usb::ohci {
+class OhciTraversalEngine;
+}
+
 namespace xblob::usb {
 
 class OhciController {
 public:
     OhciController();
-    ~OhciController() = default;
+    ~OhciController();
 
     // Reset all registers, lists, ports, and internal state
     void Reset() noexcept;
@@ -74,6 +78,7 @@ private:
                          ohci::kMaxRootHubPorts}; // 4 ports, power switched individually
     u32 rh_descriptor_b_{0};
     u32 rh_status_{0};
+    std::unique_ptr<ohci::OhciTraversalEngine> traversal_;
 
     struct PortState {
         u32 status{0};

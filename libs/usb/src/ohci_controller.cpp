@@ -4,9 +4,11 @@
 
 namespace xblob::usb {
 
-OhciController::OhciController() {
+OhciController::OhciController() : traversal_(std::make_unique<ohci::OhciTraversalEngine>()) {
     Reset();
 }
+
+OhciController::~OhciController() = default;
 
 void OhciController::Reset() noexcept {
     revision_ = ohci::kDefaultRevision;
@@ -29,6 +31,7 @@ void OhciController::Reset() noexcept {
     rh_descriptor_a_ = 0x02000000 | ohci::kMaxRootHubPorts;
     rh_descriptor_b_ = 0;
     rh_status_ = 0;
+    traversal_->Reset();
 
     for (u8 i = 0; i < ohci::kMaxRootHubPorts; ++i) {
         u32 st = ohci::port_status::kPortPowerStatus;
@@ -294,8 +297,6 @@ Result<void> OhciController::ProcessFrame(UsbGuestMemory& memory) noexcept {
     };
 
     u32 done_head_acc = 0;
-    ohci::OhciTraversalEngine traversal;
-
     // Process periodic list if enabled
     if (control_ & ohci::control::kPeriodicListEnable) {
         GuestAddr periodic_head = period_current_ed_;
@@ -308,7 +309,7 @@ Result<void> OhciController::ProcessFrame(UsbGuestMemory& memory) noexcept {
         }
         if (periodic_head != 0) {
             auto p_res =
-                traversal.ProcessEndpointList(periodic_head, memory, done_head_acc, device_lookup);
+                traversal_->ProcessEndpointList(periodic_head, memory, done_head_acc, device_lookup);
             if (!p_res) {
                 return p_res.error();
             }
@@ -320,7 +321,7 @@ Result<void> OhciController::ProcessFrame(UsbGuestMemory& memory) noexcept {
         GuestAddr ctrl_head = control_current_ed_ != 0 ? control_current_ed_ : control_head_ed_;
         if (ctrl_head != 0) {
             auto c_res =
-                traversal.ProcessEndpointList(ctrl_head, memory, done_head_acc, device_lookup);
+                traversal_->ProcessEndpointList(ctrl_head, memory, done_head_acc, device_lookup);
             if (!c_res) {
                 return c_res.error();
             }
@@ -332,7 +333,7 @@ Result<void> OhciController::ProcessFrame(UsbGuestMemory& memory) noexcept {
         GuestAddr bulk_head = bulk_current_ed_ != 0 ? bulk_current_ed_ : bulk_head_ed_;
         if (bulk_head != 0) {
             auto b_res =
-                traversal.ProcessEndpointList(bulk_head, memory, done_head_acc, device_lookup);
+                traversal_->ProcessEndpointList(bulk_head, memory, done_head_acc, device_lookup);
             if (!b_res) {
                 return b_res.error();
             }

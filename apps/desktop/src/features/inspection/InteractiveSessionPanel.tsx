@@ -17,6 +17,7 @@ export const InteractiveSessionPanel: React.FC<InteractiveSessionPanelProps> = (
   const inputSeqRef = useRef<number>(1);
   const lastFrameSeqRef = useRef<number>(0);
   const pressedKeysRef = useRef<Set<string>>(new Set());
+  const loopActiveRef = useRef<boolean>(false);
 
   const [disclaimerAccepted, setDisclaimerAccepted] = useState<boolean>(false);
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -82,7 +83,7 @@ export const InteractiveSessionPanel: React.FC<InteractiveSessionPanelProps> = (
       console.warn('Erro transitório no loop interativo:', e);
     }
 
-    if (isRunning) {
+    if (loopActiveRef.current) {
       animFrameIdRef.current = requestAnimationFrame(() => {
         void pollInteractiveLoop();
       });
@@ -90,6 +91,7 @@ export const InteractiveSessionPanel: React.FC<InteractiveSessionPanelProps> = (
   }, [isRunning, drawPixelsToCanvas]);
 
   useEffect(() => {
+    loopActiveRef.current = isRunning;
     if (isRunning) {
       animFrameIdRef.current = requestAnimationFrame(() => {
         void pollInteractiveLoop();
@@ -100,10 +102,12 @@ export const InteractiveSessionPanel: React.FC<InteractiveSessionPanelProps> = (
     }
 
     return () => {
+      loopActiveRef.current = false;
       if (animFrameIdRef.current !== null) {
         cancelAnimationFrame(animFrameIdRef.current);
         animFrameIdRef.current = null;
       }
+      pressedKeysRef.current.clear();
     };
   }, [isRunning, pollInteractiveLoop]);
 

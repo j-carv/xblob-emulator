@@ -24,8 +24,8 @@ public:
 
     // UsbDevice interface
     [[nodiscard]] std::string_view name() const noexcept override { return name_; }
-    [[nodiscard]] u8 address() const noexcept override { return address_; }
-    void set_address(u8 address) noexcept override { address_ = address; }
+    [[nodiscard]] u8 address() const noexcept override;
+    void set_address(u8 address) noexcept override;
     [[nodiscard]] usb::UsbSpeed speed() const noexcept override { return usb::UsbSpeed::FullSpeed; }
     [[nodiscard]] bool is_connected() const noexcept override;
 
@@ -48,11 +48,11 @@ public:
 
     // Current report inspection
     [[nodiscard]] XidGamepadReport GetCurrentReport() const noexcept;
-    [[nodiscard]] u64 current_sequence() const noexcept { return last_sequence_; }
+    [[nodiscard]] u64 current_sequence() const noexcept;
 
     // Rumble inspection
-    [[nodiscard]] u16 rumble_left_motor() const noexcept { return rumble_left_; }
-    [[nodiscard]] u16 rumble_right_motor() const noexcept { return rumble_right_; }
+    [[nodiscard]] u16 rumble_left_motor() const noexcept;
+    [[nodiscard]] u16 rumble_right_motor() const noexcept;
 
     // Unsupported requests telemetry
     [[nodiscard]] u32 unsupported_requests_count() const noexcept;

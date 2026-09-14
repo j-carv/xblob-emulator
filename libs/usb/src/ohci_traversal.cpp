@@ -5,20 +5,6 @@
 
 namespace xblob::usb::ohci {
 
-namespace {
-
-struct ControlTransferSession {
-    UsbSetupPacket setup{};
-    std::vector<u8> in_buffer{};
-    u32 in_offset{0};
-    bool active{false};
-};
-
-// Internal map for multi-TD control transfer state tracking by (device_addr << 4 | endpoint)
-static std::unordered_map<u16, ControlTransferSession> s_control_sessions;
-
-} // namespace
-
 Result<EndpointDescriptor>
 OhciTraversalEngine::ReadEndpointDescriptor(GuestAddr addr, UsbGuestMemory& memory) const noexcept {
     if ((addr & (kDescriptorAlignment - 1)) != 0) {
@@ -131,7 +117,7 @@ OhciTraversalEngine::ProcessSingleTd(GuestAddr td_addr, GeneralTransferDescripto
 
     u16 session_key =
         static_cast<u16>((ed.function_address() << 4) | (ed.endpoint_number() & 0x0F));
-    auto& session = s_control_sessions[session_key];
+    auto& session = control_sessions_[session_key];
 
     u32 buf_len = td.buffer_length();
     bool advance_and_retire = true;

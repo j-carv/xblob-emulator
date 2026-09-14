@@ -85,6 +85,16 @@ XidController::XidController(std::string_view name) : name_(name) {
     Reset();
 }
 
+u8 XidController::address() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return address_;
+}
+
+void XidController::set_address(u8 address) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    address_ = address;
+}
+
 bool XidController::is_connected() const noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     return connected_;
@@ -114,6 +124,21 @@ void XidController::Disconnect() noexcept {
 XidGamepadReport XidController::GetCurrentReport() const noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     return current_report_;
+}
+
+u64 XidController::current_sequence() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return last_sequence_;
+}
+
+u16 XidController::rumble_left_motor() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return rumble_left_;
+}
+
+u16 XidController::rumble_right_motor() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return rumble_right_;
 }
 
 bool XidController::SubmitSnapshot(const HostInputSnapshot& snapshot) noexcept {

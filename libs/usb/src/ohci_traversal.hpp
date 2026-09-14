@@ -8,6 +8,7 @@
 #include "xblob/usb/usb_memory.hpp"
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace xblob::usb::ohci {
@@ -23,12 +24,23 @@ class OhciTraversalEngine {
 public:
     OhciTraversalEngine() = default;
 
+    void Reset() noexcept { control_sessions_.clear(); }
+
     // Process a list of EDs (e.g. Control List, Bulk List, or Periodic List)
     [[nodiscard]] Result<TraversalStats> ProcessEndpointList(
         GuestAddr head_ed_addr, UsbGuestMemory& memory, u32& done_head_accumulator,
         const std::function<std::shared_ptr<UsbDevice>(u8)>& device_lookup) noexcept;
 
 private:
+    struct ControlTransferSession {
+        UsbSetupPacket setup{};
+        std::vector<u8> in_buffer{};
+        u32 in_offset{0};
+        bool active{false};
+    };
+
+    std::unordered_map<u16, ControlTransferSession> control_sessions_{};
+
     [[nodiscard]] Result<EndpointDescriptor>
     ReadEndpointDescriptor(GuestAddr addr, UsbGuestMemory& memory) const noexcept;
 
