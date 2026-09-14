@@ -9,7 +9,7 @@ int main(void) {
     assert(major == 1);
 
     uint32_t minor = xblob_get_abi_version_minor();
-    assert(minor == 4);
+    assert(minor == 5);
 
     uint32_t patch = xblob_get_abi_version_patch();
     assert(patch == 0);
@@ -22,6 +22,8 @@ int main(void) {
     assert((caps & XBLOB_CAPABILITY_NV2A_GPU) != 0);
     assert((caps & XBLOB_CAPABILITY_XDVDFS_VFS) != 0);
     assert((caps & XBLOB_CAPABILITY_MEDIA_BOOT) != 0);
+    assert((caps & XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION) != 0);
+    assert((caps & XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS) != 0);
 
     const char* version = xblob_get_product_version();
     assert(version != NULL);
@@ -41,7 +43,7 @@ int main(void) {
     xblob_status_t status = xblob_get_core_info(&info);
     assert(status == XBLOB_STATUS_OK);
     assert(info.abi_version_major == 1);
-    assert(info.abi_version_minor == 4);
+    assert(info.abi_version_minor == 5);
     assert(info.capabilities == caps);
     assert(strcmp(info.product_name, "xblob") == 0);
 
@@ -52,6 +54,15 @@ int main(void) {
     assert(xblob_machine_step(NULL, 1, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
     assert(xblob_machine_prepare_media(NULL, NULL, 0, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
     assert(xblob_vfs_browser_create(NULL, 0, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+
+    // ABI 1.5 null checks
+    assert(xblob_machine_start_execution(NULL, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_machine_resume_execution(NULL, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_machine_wait_completion(NULL, 0, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_machine_get_snapshot(NULL, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_machine_get_compatibility_diagnostic(NULL, NULL) ==
+           XBLOB_STATUS_ERROR_NULL_POINTER);
+    assert(xblob_machine_get_trace_text(NULL, NULL, NULL) == XBLOB_STATUS_ERROR_NULL_POINTER);
 
     // Frame presentation API null safety
     xblob_frame_metadata_t meta;

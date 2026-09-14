@@ -12,7 +12,7 @@
 
 TEST_CASE(TestCApiVersionAndCapabilities) {
     EXPECT_EQ(xblob_get_abi_version_major(), 1u);
-    EXPECT_EQ(xblob_get_abi_version_minor(), 4u);
+    EXPECT_EQ(xblob_get_abi_version_minor(), 5u);
     EXPECT_EQ(xblob_get_abi_version_patch(), 0u);
 
     uint64_t caps = xblob_get_capabilities();
@@ -29,6 +29,8 @@ TEST_CASE(TestCApiVersionAndCapabilities) {
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_NV2A_GPU) != 0);
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_XDVDFS_VFS) != 0);
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_MEDIA_BOOT) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS) != 0);
 
     EXPECT_EQ(std::string(xblob_get_product_version()), "0.1.0");
     EXPECT_EQ(std::string(xblob_get_product_name()), "xblob");
@@ -72,7 +74,7 @@ TEST_CASE(TestCApiCoreInfoStructuralCompatibility) {
     info.struct_size = sizeof(xblob_core_info_t);
     EXPECT_EQ(xblob_get_core_info(&info), XBLOB_STATUS_OK);
     EXPECT_EQ(info.abi_version_major, 1u);
-    EXPECT_EQ(info.abi_version_minor, 4u);
+    EXPECT_EQ(info.abi_version_minor, 5u);
     EXPECT_EQ(info.abi_version_patch, 0u);
     EXPECT_EQ(info.capabilities, xblob_get_capabilities());
     EXPECT_EQ(std::string(info.product_name), "xblob");
@@ -595,6 +597,73 @@ TEST_CASE(TestCApiVfsBrowserPagination) {
 
     xblob_vfs_browser_destroy(browser);
     std::filesystem::remove(iso_path);
+}
+
+TEST_CASE(TestCApiExperimentalExecutionAndDiagnostics) {
+    xblob_machine_t machine = nullptr;
+    EXPECT_EQ(xblob_machine_create(&machine), XBLOB_STATUS_OK);
+    EXPECT_TRUE(machine != nullptr);
+
+    // Create synthetic XBE: ADD EAX, 42; HLT
+    auto xbe_data = xblob::testing::CreateValidSyntheticXbe(0x77778888, "ABI 1.5 Game", 1);
+    xbe_data[0x1000] = 0x83;
+    xbe_data[0x1001] = 0xC0;
+    xbe_data[0x1002] = 0x2A; // ADD EAX, 42
+    xbe_data[0x1003] = 0xF4; // HLT
+
+    auto temp_dir = std::filesystem::temp_directory_path();
+    auto xbe_path = temp_dir / "xblob_test_abi15.xbe";
+    {
+        std::ofstream ofs(xbe_path, std::ios::binary);
+        ofs.write(reinterpret_cast<const char*>(xbe_data.data()),
+                  static_cast<std::streamsize>(xbe_data.size()));
+    }
+
+    std::string path_str = xbe_path.string();
+    xblob_prepare_diagnostic_t prep_diag{};
+    prep_diag.struct_size = sizeof(xblob_prepare_diagnostic_t);
+    EXPECT_EQ(xblob_machine_prepare_xbe(machine, path_str.c_str(), path_str.size(), &prep_diag),
+              XBLOB_STATUS_OK);
+
+    // Test start execution with budgets
+    xblob_execution_budgets_t budgets{};
+    budgets.struct_size = sizeof(xblob_execution_budgets_t);
+    budgets.max_instructions = 100;
+    budgets.max_cycles = 1000;
+    budgets.chunk_instructions = 10;
+    budgets.max_wall_time_ms = 1000;
+
+    EXPECT_EQ(xblob_machine_start_execution(machine, &budgets), XBLOB_STATUS_OK);
+
+    int completed = 0;
+    EXPECT_EQ(xblob_machine_wait_completion(machine, 2000, &completed), XBLOB_STATUS_OK);
+    EXPECT_EQ(completed, 1);
+
+    // Snapshot
+    xblob_machine_snapshot_t snap{};
+    snap.struct_size = sizeof(xblob_machine_snapshot_t);
+    EXPECT_EQ(xblob_machine_get_snapshot(machine, &snap), XBLOB_STATUS_OK);
+    EXPECT_EQ(snap.state, XBLOB_MACHINE_STATE_PAUSED);
+    EXPECT_EQ(snap.stop_reason_code, XBLOB_STOP_REASON_HALTED);
+    EXPECT_EQ(snap.registers.eax, 42u);
+    EXPECT_EQ(snap.instructions_executed, 2u);
+    EXPECT_EQ(snap.stack_valid, 1);
+
+    // Compatibility diagnostic
+    xblob_compatibility_diagnostic_t diag{};
+    diag.struct_size = sizeof(xblob_compatibility_diagnostic_t);
+    EXPECT_EQ(xblob_machine_get_compatibility_diagnostic(machine, &diag), XBLOB_STATUS_OK);
+    EXPECT_EQ(diag.first_blocker_code, XBLOB_STOP_REASON_HALTED);
+
+    // Trace text two-call
+    size_t trace_len = 0;
+    EXPECT_EQ(xblob_machine_get_trace_text(machine, nullptr, &trace_len), XBLOB_STATUS_OK);
+    EXPECT_TRUE(trace_len > 0);
+    std::string trace_str(trace_len, '\0');
+    EXPECT_EQ(xblob_machine_get_trace_text(machine, trace_str.data(), &trace_len), XBLOB_STATUS_OK);
+
+    xblob_machine_destroy(machine);
+    std::filesystem::remove(xbe_path);
 }
 
 int main() {

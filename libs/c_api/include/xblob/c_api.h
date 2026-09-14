@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 #define XBLOB_C_API_VERSION_MAJOR 1
-#define XBLOB_C_API_VERSION_MINOR 4
+#define XBLOB_C_API_VERSION_MINOR 5
 #define XBLOB_C_API_VERSION_PATCH 0
 
 typedef enum xblob_status_t {
@@ -56,6 +56,8 @@ typedef enum xblob_status_t {
 #define XBLOB_CAPABILITY_NV2A_GPU (1ULL << 10)
 #define XBLOB_CAPABILITY_XDVDFS_VFS (1ULL << 11)
 #define XBLOB_CAPABILITY_MEDIA_BOOT (1ULL << 12)
+#define XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION (1ULL << 13)
+#define XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS (1ULL << 14)
 
 typedef enum xblob_media_type_t {
     XBLOB_MEDIA_TYPE_UNKNOWN = 0,
@@ -136,7 +138,8 @@ typedef enum xblob_machine_state_t {
     XBLOB_MACHINE_STATE_PREPARED = 1,
     XBLOB_MACHINE_STATE_PAUSED = 2,
     XBLOB_MACHINE_STATE_FAULTED = 3,
-    XBLOB_MACHINE_STATE_STOPPED = 4
+    XBLOB_MACHINE_STATE_STOPPED = 4,
+    XBLOB_MACHINE_STATE_RUNNING = 5
 } xblob_machine_state_t;
 
 typedef struct xblob_prepare_diagnostic_t {
@@ -263,6 +266,101 @@ xblob_vfs_browser_get_entry_count(xblob_vfs_browser_t browser, const char* dir_p
 XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_vfs_browser_list_entries(
     xblob_vfs_browser_t browser, const char* dir_path_utf8, size_t dir_path_len, uint32_t offset,
     uint32_t limit, xblob_dir_entry_t* out_entries, uint32_t* inout_count);
+
+/* --- Experimental Title Execution & Compatibility Diagnostics API (Added in ABI 1.5) --- */
+
+typedef enum xblob_stop_reason_code_t {
+    XBLOB_STOP_REASON_NONE = 0,
+    XBLOB_STOP_REASON_PAUSED = 1,
+    XBLOB_STOP_REASON_STEP_COMPLETED = 2,
+    XBLOB_STOP_REASON_HALTED = 3,
+    XBLOB_STOP_REASON_BUDGET_INSTRUCTIONS = 4,
+    XBLOB_STOP_REASON_BUDGET_CYCLES = 5,
+    XBLOB_STOP_REASON_BUDGET_WALL_TIME = 6,
+    XBLOB_STOP_REASON_BUDGET_EVENTS = 7,
+    XBLOB_STOP_REASON_WATCHDOG_TIMEOUT = 8,
+    XBLOB_STOP_REASON_UNSUPPORTED_OPCODE = 9,
+    XBLOB_STOP_REASON_UNSUPPORTED_EXPORT = 10,
+    XBLOB_STOP_REASON_UNSUPPORTED_GPU_METHOD = 11,
+    XBLOB_STOP_REASON_UNSUPPORTED_FILE_SERVICE = 12,
+    XBLOB_STOP_REASON_CPU_EXCEPTION = 13,
+    XBLOB_STOP_REASON_MEMORY_FAULT = 14,
+    XBLOB_STOP_REASON_INTERNAL_ERROR = 15
+} xblob_stop_reason_code_t;
+
+typedef struct xblob_execution_budgets_t {
+    uint32_t struct_size;
+    uint64_t max_instructions;
+    uint64_t max_cycles;
+    uint64_t max_wall_time_ms;
+    uint64_t max_events;
+    uint32_t chunk_instructions;
+} xblob_execution_budgets_t;
+
+typedef struct xblob_cpu_registers_snapshot_t {
+    uint32_t struct_size;
+    uint32_t eax;
+    uint32_t ecx;
+    uint32_t edx;
+    uint32_t ebx;
+    uint32_t esp;
+    uint32_t ebp;
+    uint32_t esi;
+    uint32_t edi;
+    uint32_t eip;
+    uint32_t eflags;
+} xblob_cpu_registers_snapshot_t;
+
+typedef struct xblob_machine_snapshot_t {
+    uint32_t struct_size;
+    xblob_machine_state_t state;
+    xblob_stop_reason_code_t stop_reason_code;
+    uint32_t fault_eip;
+    uint32_t active_thread_id;
+    uint32_t thread_count;
+    uint64_t current_cycle;
+    uint64_t instructions_executed;
+    uint64_t events_fired;
+    xblob_cpu_registers_snapshot_t registers;
+    int stack_valid;
+    uint32_t stack_words[8];
+    char stop_reason_category[64];
+    char stop_reason_symbol[64];
+    char stop_reason_detail[256];
+    char error_message[256];
+} xblob_machine_snapshot_t;
+
+typedef struct xblob_compatibility_diagnostic_t {
+    uint32_t struct_size;
+    xblob_stop_reason_code_t first_blocker_code;
+    uint32_t blocker_ordinal_or_opcode;
+    uint32_t blocker_thread_id;
+    uint32_t blocker_eip;
+    uint64_t blocker_count;
+    char blocker_category[64];
+    char blocker_symbol_or_mnemonic[64];
+    char blocker_detail[256];
+    uint64_t total_instructions;
+    uint64_t total_cycles;
+} xblob_compatibility_diagnostic_t;
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL
+xblob_machine_start_execution(xblob_machine_t machine, const xblob_execution_budgets_t* budgets);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL
+xblob_machine_resume_execution(xblob_machine_t machine, const xblob_execution_budgets_t* budgets);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL
+xblob_machine_wait_completion(xblob_machine_t machine, uint32_t timeout_ms, int* out_completed);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_snapshot(
+    const struct xblob_machine_s* machine, xblob_machine_snapshot_t* out_snapshot);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_compatibility_diagnostic(
+    const struct xblob_machine_s* machine, xblob_compatibility_diagnostic_t* out_diagnostic);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_trace_text(
+    const struct xblob_machine_s* machine, char* buffer, size_t* inout_buffer_size);
 
 #ifdef __cplusplus
 }
