@@ -4,12 +4,12 @@
 
 ---
 
-### Estado Atual do Projeto: Marco 6 (Sistema de Arquivos XDVDFS, VFS Virtual, Boot de Mídia e Kernel File Services HLE)
+### Estado Atual do Projeto: Marco 7 (Execução Experimental de Títulos, CPU IA-32 e Kernel HLE Expandidos, ABI C 1.5)
 
 > [!IMPORTANT]
-> **Aviso de Estado Real**: O projeto encontra-se atualmente no **Marco 6**. 
+> **Aviso de Estado Real**: O projeto encontra-se atualmente no **Marco 7**. 
 > A meta final do **xblob** é carregar e executar/jogar arquivos `.xbe`, `.iso` e `.xiso` fornecidos legalmente pelo usuário.
-> No **marco atual**, o emulador monta imagens XDVDFS reais (raw e trimmed/XISO), navega por seus diretórios de forma bounded e case-insensitive, localiza o inicializador `default.xbe`, carrega executáveis de forma transacional via pipeline com rollback e atende chamadas de serviços de arquivos do kernel. **Ainda não declara suporte a gameplay comercial completo** (ações interativas de jogo como botões "Play" aguardam a conclusão de pipelines funcionais dos próximos marcos).
+> No **marco atual**, o emulador disponibiliza execução assíncrona experimental de títulos com worker em background, fila de comandos thread-safe, budgets determinísticos de execução (instruções, ciclos, wall-time), watchdog cooperativo, captura de snapshots de estado (registradores IA-32, pilha bounded), diagnósticos de compatibilidade com identificação do primeiro bloqueador, expansão de instruções IA-32 (prefixos, shifts/rotates, mul/div, strings com REP, atômicos), expansão de serviços de kernel sintético HLE (threads, sincronização, tempo, I/O, memória virtual), e interface desktop acessível com consentimento prévio para execução de mídia local. **Ainda não declara suporte a jogabilidade comercial completa** e não garante taxa de quadros ou compatibilidade de jogos.
 > Todo o conteúdo do usuário permanece estritamente local.
 > O repositório e os testes NUNCA incluem, distribuem ou dependem de jogos comerciais, BIOS, chaves criptográficas, firmwares ou headers proprietários.
 
@@ -19,6 +19,9 @@ Para detalhes sobre o roadmap e as fronteiras de todos os subsistemas planejados
 
 ## Recursos Implementados
 
+- **Execução Experimental de Títulos e Worker Assíncrono (`libs/machine`, `libs/c_api`, `apps/desktop`)**: Worker desacoplado em thread de background com fila de comandos thread-safe (`Start`, `Resume`, `Pause`, `Stop`, `Step`), controle atômico, watchdog cooperativo, orçamentos configuráveis (`ExecutionBudgets`), snapshot estruturado (`MachineSnapshot`), identificação de primeiro bloqueador (`CompatibilityDiagnostic`), rastreamento circular thread-safe (`TraceRingBuffer`) e ABI C 1.5.0 (`XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION`, `XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS`).
+- **Expansão de Instruções IA-32 (`libs/cpu`)**: Suporte a prefixos (`REP`, `REPNE`, `LOCK`, overrides de segmento), shifts/rotates (`SHL`, `SHR`, `SAR`, `ROL`, `ROR`) com preservação estrita de flags em contagem 0, multiplicação inteira (`MUL`, `IMUL` 1/2/3 operandos), divisão inteira (`DIV`, `IDIV`) com prevenção de UB no host e exceção #DE atômica, extensões e bit tests (`MOVZX`, `MOVSX`, `CDQ`, `BT`, `SETcc`), instruções de string (`MOVS`, `STOS`, `LODS`, `CMPS`, `SCAS`) com micro-stepping de `REP` delimitado por budget, e primitivas atômicas (`XCHG`, `CMPXCHG`).
+- **Expansão de Serviços de Kernel HLE (`libs/kernel`)**: Implementação sintética clean-room expandida de serviços de threads e sincronização, queries de tempo, alocação de memória virtual, e despacho de armadilhas INT 0x2D integrado à sessão de máquina.
 - **Sistema de Arquivos XDVDFS e Streaming (`libs/io`, `libs/formats`)**: Leitura sob demanda via `SubrangeByteSource` sem carregar a ISO inteira na memória RAM; parser iterativo defensivo de árvore binária de diretórios (BST) com detecção de ciclos, orçamentos de nós/profundidade e suporte a imagens raw (setor 32 da partição) e trimmed/XISO (setor 32/0).
 - **Sistema de Arquivos Virtual VFS (`libs/vfs`)**: Normalização canônica de caminhos Xbox (`D:\`), prevenção rigorosa contra path traversal (`..`, caracteres inválidos), tabela de handles geracionais com tag de 32 bits contra use-after-free e semântica estritamente somente leitura (`IsReadOnly`).
 - **Pipeline de Boot de Mídia Transacional (`libs/machine`)**: Detecção orientada a conteúdo (XBE direto ou disco XDVDFS), localização case-insensitive de `default.xbe`, carregamento em duas fases (`Plan` e `Apply`) e rollback garantido em caso de erro sem poluir o estado da sessão.
