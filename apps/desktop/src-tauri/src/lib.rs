@@ -17,9 +17,13 @@ pub fn run() {
             commands::resume_title_execution,
             commands::pause_title_execution,
             commands::stop_title_execution,
+            commands::step_title_execution,
             commands::get_execution_snapshot,
             commands::get_compatibility_diagnostic,
             commands::get_execution_trace,
+            commands::submit_host_input,
+            commands::get_interactive_frame,
+            commands::get_unsupported_features,
         ])
         .run(tauri::generate_context!())
         .expect("error while running xblob desktop application");
@@ -38,7 +42,7 @@ mod tests {
 
         let info = result.unwrap();
         assert_eq!(info.abi_version_major, 1);
-        assert_eq!(info.abi_version_minor, 5);
+        assert_eq!(info.abi_version_minor, 6);
         assert_eq!(info.abi_version_patch, 0);
         assert!(info.capabilities > 0);
         assert!(
@@ -64,6 +68,22 @@ mod tests {
         assert!(
             (info.capabilities & ffi::XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS) != 0,
             "Must have COMPATIBILITY_DIAGNOSTICS capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_NV2A_3D) != 0,
+            "Must have NV2A_3D capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_USB_OHCI) != 0,
+            "Must have USB_OHCI capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_XID_INPUT) != 0,
+            "Must have XID_INPUT capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_INTERACTIVE_SESSION) != 0,
+            "Must have INTERACTIVE_SESSION capability"
         );
         assert_eq!(info.product_name, "xblob");
         assert_eq!(info.product_version, "0.1.0");
@@ -137,27 +157,11 @@ mod tests {
     }
 
     #[test]
-    fn test_diagnostic_frame_snapshot_ineligible() {
-        let result =
-            commands::get_diagnostic_frame_snapshot("/path/to/commercial_game.xbe".to_string());
-        assert!(
-            result.is_err(),
-            "Non-synthetic media must be ineligible for frame snapshot"
-        );
-        let err = result.unwrap_err();
-        assert_eq!(err.code, "NOT_ELIGIBLE");
-        assert!(err.message.contains("indisponível"));
-    }
-
-    #[test]
-    fn test_diagnostic_frame_snapshot_missing_synthetic() {
+    fn test_diagnostic_frame_snapshot_missing_file() {
         let result = commands::get_diagnostic_frame_snapshot(
             "/path/to/synthetic_test_workload.xbe".to_string(),
         );
-        assert!(
-            result.is_err(),
-            "Missing synthetic file must return NOT_FOUND"
-        );
+        assert!(result.is_err(), "Missing fixture must return NOT_FOUND");
         let err = result.unwrap_err();
         assert_eq!(err.code, "NOT_FOUND");
     }
@@ -207,5 +211,41 @@ mod tests {
         assert!(res_resume.is_err());
         let err2 = res_resume.unwrap_err();
         assert_eq!(err2.code, "NO_ACTIVE_SESSION");
+    }
+
+    #[test]
+    fn test_interactive_commands_without_active_session() {
+        let dummy_input = dto::HostInputSnapshotDto {
+            sequence: 1,
+            connected: true,
+            digital_buttons: 0,
+            button_a: 0,
+            button_b: 0,
+            button_x: 0,
+            button_y: 0,
+            button_black: 0,
+            button_white: 0,
+            trigger_left: 0,
+            trigger_right: 0,
+            thumb_lx: 0,
+            thumb_ly: 0,
+            thumb_rx: 0,
+            thumb_ry: 0,
+        };
+        let input_res = commands::submit_host_input(dummy_input);
+        assert!(input_res.is_err());
+        assert_eq!(input_res.unwrap_err().code, "NO_ACTIVE_SESSION");
+
+        let frame_res = commands::get_interactive_frame(0, false);
+        assert!(frame_res.is_err());
+        assert_eq!(frame_res.unwrap_err().code, "NO_ACTIVE_SESSION");
+
+        let feat_res = commands::get_unsupported_features(0, 10);
+        assert!(feat_res.is_err());
+        assert_eq!(feat_res.unwrap_err().code, "NO_ACTIVE_SESSION");
+
+        let step_res = tauri::async_runtime::block_on(commands::step_title_execution(Some(1)));
+        assert!(step_res.is_err());
+        assert_eq!(step_res.unwrap_err().code, "NO_ACTIVE_SESSION");
     }
 }

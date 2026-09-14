@@ -7,6 +7,7 @@ import { Tabs, TabItem } from '../../components/Tabs';
 import { Alert } from '../../components/Toast';
 import { DiagnosticCanvasPreview } from './DiagnosticCanvasPreview';
 import { ExperimentalExecutionPanel } from './ExperimentalExecutionPanel';
+import { InteractiveSessionPanel } from './InteractiveSessionPanel';
 import { MediaBootPanel } from './MediaBootPanel';
 import { ValidationPanel } from './ValidationPanel';
 import { XdvdfsBrowser } from './XdvdfsBrowser';
@@ -313,6 +314,12 @@ export const InspectionView: React.FC<InspectionViewProps> = ({
         id: 'execution',
         label: '⚡ Execução Experimental',
         content: <ExperimentalExecutionPanel filePath={report.filePath} />,
+      });
+
+      tabs.push({
+        id: 'interactive_session',
+        label: '🎮 Sessão Interativa',
+        content: <InteractiveSessionPanel filePath={report.filePath} />,
       });
     }
 

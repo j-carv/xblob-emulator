@@ -480,4 +480,132 @@ xblob_status_t xblob_machine_get_trace_text(const struct xblob_machine_s* machin
     return xblob::c_api_internal::copy_string_to_two_call_buffer(text, buffer, inout_buffer_size);
 }
 
+xblob_status_t xblob_machine_submit_input(xblob_machine_t machine,
+                                          const xblob_host_input_snapshot_t* snapshot,
+                                          int* out_accepted) {
+    if (!machine || !snapshot || !out_accepted) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    if (snapshot->struct_size < sizeof(xblob_host_input_snapshot_t)) {
+        return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+    }
+
+    xblob::input::HostInputSnapshot snap;
+    snap.sequence = snapshot->sequence;
+    snap.connected = snapshot->connected != 0;
+    snap.digital_buttons = snapshot->digital_buttons;
+    snap.button_a = snapshot->button_a;
+    snap.button_b = snapshot->button_b;
+    snap.button_x = snapshot->button_x;
+    snap.button_y = snapshot->button_y;
+    snap.button_black = snapshot->button_black;
+    snap.button_white = snapshot->button_white;
+    snap.trigger_left = snapshot->trigger_left;
+    snap.trigger_right = snapshot->trigger_right;
+    snap.thumb_lx = snapshot->thumb_lx;
+    snap.thumb_ly = snapshot->thumb_ly;
+    snap.thumb_rx = snapshot->thumb_rx;
+    snap.thumb_ry = snapshot->thumb_ry;
+    snap.ClampAndNormalize();
+
+    auto res = machine->session->SubmitHostInput(snap);
+    if (!res) {
+        return xblob::c_api_internal::map_error_to_status(res.error().code);
+    }
+    *out_accepted = *res ? 1 : 0;
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_get_interactive_metrics(const struct xblob_machine_s* machine,
+                                                     xblob_interactive_metrics_t* out_metrics) {
+    if (!machine || !out_metrics) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    if (out_metrics->struct_size < sizeof(uint32_t)) {
+        return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+    }
+
+    const auto m = machine->session->GetInteractiveMetrics();
+    xblob_interactive_metrics_t full{};
+    full.struct_size = sizeof(xblob_interactive_metrics_t);
+    full.frame_sequence = m.frame_sequence;
+    full.input_sequence = m.input_sequence;
+    full.instructions_executed = m.instructions_executed;
+    full.cycles_consumed = m.cycles_consumed;
+    full.unsupported_gpu_count = m.unsupported_gpu_count;
+    full.unsupported_usb_count = m.unsupported_usb_count;
+    full.state = static_cast<xblob_machine_state_t>(m.state_val);
+    full.stop_reason_code = map_stop_reason_code(m.stop_reason);
+
+    const size_t copy_size = std::min(static_cast<size_t>(out_metrics->struct_size),
+                                      sizeof(xblob_interactive_metrics_t));
+    std::memcpy(out_metrics, &full, copy_size);
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_get_rumble_state(const struct xblob_machine_s* machine,
+                                              xblob_rumble_state_t* out_rumble) {
+    if (!machine || !out_rumble) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    if (out_rumble->struct_size < sizeof(uint32_t)) {
+        return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+    }
+
+    xblob_rumble_state_t full{};
+    full.struct_size = sizeof(xblob_rumble_state_t);
+    full.left_motor = machine->session->gamepad().rumble_left_motor();
+    full.right_motor = machine->session->gamepad().rumble_right_motor();
+
+    const size_t copy_size =
+        std::min(static_cast<size_t>(out_rumble->struct_size), sizeof(xblob_rumble_state_t));
+    std::memcpy(out_rumble, &full, copy_size);
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_get_unsupported_features_count(const struct xblob_machine_s* machine,
+                                                            uint32_t* out_count) {
+    if (!machine || !out_count) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    const auto diag = machine->session->GetCompatibilityDiagnostic();
+    *out_count = static_cast<uint32_t>(diag.unsupported_features.size());
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_get_unsupported_features(
+    const struct xblob_machine_s* machine, uint32_t offset, uint32_t limit,
+    xblob_unsupported_feature_entry_t* out_entries, uint32_t* inout_count) {
+    if (!machine || !inout_count) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    const auto diag = machine->session->GetCompatibilityDiagnostic();
+    const auto total = static_cast<uint32_t>(diag.unsupported_features.size());
+
+    if (offset >= total || limit == 0) {
+        *inout_count = 0;
+        return XBLOB_STATUS_OK;
+    }
+
+    const uint32_t available = total - offset;
+    const uint32_t count = std::min({limit, available, *inout_count});
+
+    if (out_entries && count > 0) {
+        for (uint32_t i = 0; i < count; ++i) {
+            const auto& src = diag.unsupported_features[offset + i];
+            auto& dst = out_entries[i];
+            std::memset(&dst, 0, sizeof(xblob_unsupported_feature_entry_t));
+            std::strncpy(dst.subsystem, src.subsystem.c_str(), sizeof(dst.subsystem) - 1);
+            std::strncpy(dst.capability, src.capability.c_str(), sizeof(dst.capability) - 1);
+            dst.identifier = src.identifier;
+            dst.count = src.count;
+            std::strncpy(dst.first_context, src.first_context.c_str(),
+                         sizeof(dst.first_context) - 1);
+        }
+    }
+
+    *inout_count = count;
+    return XBLOB_STATUS_OK;
+}
+
 } // extern "C"

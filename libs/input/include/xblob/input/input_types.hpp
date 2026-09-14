@@ -153,10 +153,14 @@ struct XidGamepadReport {
         r.left_trigger = src[10];
         r.right_trigger = src[11];
 
-        u16 lx = static_cast<u16>(src[12]) | (static_cast<u16>(src[13]) << 8);
-        u16 ly = static_cast<u16>(src[14]) | (static_cast<u16>(src[15]) << 8);
-        u16 rx = static_cast<u16>(src[16]) | (static_cast<u16>(src[17]) << 8);
-        u16 ry = static_cast<u16>(src[18]) | (static_cast<u16>(src[19]) << 8);
+        u16 lx = static_cast<u16>(static_cast<u16>(src[12]) |
+                                  static_cast<u16>(static_cast<u16>(src[13]) << 8));
+        u16 ly = static_cast<u16>(static_cast<u16>(src[14]) |
+                                  static_cast<u16>(static_cast<u16>(src[15]) << 8));
+        u16 rx = static_cast<u16>(static_cast<u16>(src[16]) |
+                                  static_cast<u16>(static_cast<u16>(src[17]) << 8));
+        u16 ry = static_cast<u16>(static_cast<u16>(src[18]) |
+                                  static_cast<u16>(static_cast<u16>(src[19]) << 8));
 
         r.thumb_lx = static_cast<i16>(lx);
         r.thumb_ly = static_cast<i16>(ly);

@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 #define XBLOB_C_API_VERSION_MAJOR 1
-#define XBLOB_C_API_VERSION_MINOR 5
+#define XBLOB_C_API_VERSION_MINOR 6
 #define XBLOB_C_API_VERSION_PATCH 0
 
 typedef enum xblob_status_t {
@@ -58,6 +58,10 @@ typedef enum xblob_status_t {
 #define XBLOB_CAPABILITY_MEDIA_BOOT (1ULL << 12)
 #define XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION (1ULL << 13)
 #define XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS (1ULL << 14)
+#define XBLOB_CAPABILITY_NV2A_3D (1ULL << 15)
+#define XBLOB_CAPABILITY_USB_OHCI (1ULL << 16)
+#define XBLOB_CAPABILITY_XID_INPUT (1ULL << 17)
+#define XBLOB_CAPABILITY_INTERACTIVE_SESSION (1ULL << 18)
 
 typedef enum xblob_media_type_t {
     XBLOB_MEDIA_TYPE_UNKNOWN = 0,
@@ -361,6 +365,70 @@ XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_compatibili
 
 XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_trace_text(
     const struct xblob_machine_s* machine, char* buffer, size_t* inout_buffer_size);
+
+/* --- Interactive Graphics & Input Session API (Added in ABI 1.6) --- */
+
+typedef struct xblob_host_input_snapshot_t {
+    uint32_t struct_size;
+    uint64_t sequence;
+    uint8_t connected;
+    uint8_t digital_buttons;
+    uint8_t button_a;
+    uint8_t button_b;
+    uint8_t button_x;
+    uint8_t button_y;
+    uint8_t button_black;
+    uint8_t button_white;
+    uint8_t trigger_left;
+    uint8_t trigger_right;
+    int16_t thumb_lx;
+    int16_t thumb_ly;
+    int16_t thumb_rx;
+    int16_t thumb_ry;
+    uint16_t padding;
+} xblob_host_input_snapshot_t;
+
+typedef struct xblob_interactive_metrics_t {
+    uint32_t struct_size;
+    uint64_t frame_sequence;
+    uint64_t input_sequence;
+    uint64_t instructions_executed;
+    uint64_t cycles_consumed;
+    uint32_t unsupported_gpu_count;
+    uint32_t unsupported_usb_count;
+    xblob_machine_state_t state;
+    xblob_stop_reason_code_t stop_reason_code;
+} xblob_interactive_metrics_t;
+
+typedef struct xblob_unsupported_feature_entry_t {
+    char subsystem[32];
+    char capability[64];
+    uint32_t identifier;
+    uint64_t count;
+    char first_context[128];
+} xblob_unsupported_feature_entry_t;
+
+typedef struct xblob_rumble_state_t {
+    uint32_t struct_size;
+    uint16_t left_motor;
+    uint16_t right_motor;
+} xblob_rumble_state_t;
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_submit_input(
+    xblob_machine_t machine, const xblob_host_input_snapshot_t* snapshot, int* out_accepted);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_interactive_metrics(
+    const struct xblob_machine_s* machine, xblob_interactive_metrics_t* out_metrics);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_rumble_state(
+    const struct xblob_machine_s* machine, xblob_rumble_state_t* out_rumble);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_unsupported_features_count(
+    const struct xblob_machine_s* machine, uint32_t* out_count);
+
+XBLOB_C_API_EXPORT xblob_status_t XBLOB_C_API_CALL xblob_machine_get_unsupported_features(
+    const struct xblob_machine_s* machine, uint32_t offset, uint32_t limit,
+    xblob_unsupported_feature_entry_t* out_entries, uint32_t* inout_count);
 
 #ifdef __cplusplus
 }

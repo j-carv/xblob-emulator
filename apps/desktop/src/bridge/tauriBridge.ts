@@ -7,9 +7,12 @@ import {
   CoreInfo,
   ExecutionBudgets,
   GpuFrameSnapshot,
+  HostInputSnapshot,
+  InteractiveFrame,
   MachinePrepareDiagnostic,
   MachineSnapshot,
   MediaReport,
+  UnsupportedFeatureEntry,
   VfsDirectoryPage,
 } from './types';
 
@@ -96,5 +99,21 @@ export class TauriBridge implements BridgeApi {
 
   async getExecutionTrace(): Promise<string> {
     return await invoke<string>('get_execution_trace');
+  }
+
+  async stepTitleExecution(instructionBudget?: number): Promise<MachineSnapshot> {
+    return await invoke<MachineSnapshot>('step_title_execution', { instructionBudget });
+  }
+
+  async submitHostInput(snapshot: HostInputSnapshot): Promise<boolean> {
+    return await invoke<boolean>('submit_host_input', { snapshot });
+  }
+
+  async getInteractiveFrame(lastFrameSequence: number, fetchPixels: boolean): Promise<InteractiveFrame> {
+    return await invoke<InteractiveFrame>('get_interactive_frame', { lastFrameSequence, fetchPixels });
+  }
+
+  async getUnsupportedFeatures(offset: number, limit: number): Promise<UnsupportedFeatureEntry[]> {
+    return await invoke<UnsupportedFeatureEntry[]>('get_unsupported_features', { offset, limit });
   }
 }

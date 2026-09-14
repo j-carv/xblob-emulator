@@ -1,3 +1,5 @@
+use std::ffi::CStr;
+
 use crate::dto::*;
 use crate::ffi::*;
 
@@ -296,21 +298,8 @@ pub fn prepare_machine_diagnostic(
     })
 }
 
-pub fn is_eligible_synthetic_workload(path: &str) -> bool {
-    let lower = path.to_lowercase();
-    lower.contains("synthetic") || lower.contains("test_") || lower.contains("diagnostic")
-}
-
 #[tauri::command]
 pub fn get_diagnostic_frame_snapshot(path: String) -> Result<GpuFrameSnapshotDto, AppErrorDto> {
-    if !is_eligible_synthetic_workload(&path) {
-        return Err(AppErrorDto {
-            code: "NOT_ELIGIBLE".to_string(),
-            message: "Visualização gráfica de framebuffer indisponível para esta mídia.".to_string(),
-            details: Some("O subsistema NV2A suporta exclusivamente fixtures de diagnóstico sintéticas (clean-room). Mídias comerciais não possuem suporte de renderização.".to_string()),
-        });
-    }
-
     let mut session = SafeMachineSession::new().map_err(|e| AppErrorDto {
         code: e.code().to_string(),
         message: e.to_string(),
@@ -715,4 +704,219 @@ pub fn get_execution_trace() -> Result<String, AppErrorDto> {
         message: e.to_string(),
         details: None,
     })
+}
+
+#[tauri::command]
+pub fn submit_host_input(snapshot: HostInputSnapshotDto) -> Result<bool, AppErrorDto> {
+    let lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+        code: "LOCK_ERROR".to_string(),
+        message: "Falha ao adquirir lock de sessão".to_string(),
+        details: None,
+    })?;
+    let session = lock.as_ref().ok_or_else(|| AppErrorDto {
+        code: "NO_ACTIVE_SESSION".to_string(),
+        message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+        details: None,
+    })?;
+
+    let raw_snapshot = XblobHostInputSnapshot {
+        struct_size: std::mem::size_of::<XblobHostInputSnapshot>() as u32,
+        sequence: snapshot.sequence,
+        connected: if snapshot.connected { 1 } else { 0 },
+        digital_buttons: snapshot.digital_buttons,
+        button_a: snapshot.button_a,
+        button_b: snapshot.button_b,
+        button_x: snapshot.button_x,
+        button_y: snapshot.button_y,
+        button_black: snapshot.button_black,
+        button_white: snapshot.button_white,
+        trigger_left: snapshot.trigger_left,
+        trigger_right: snapshot.trigger_right,
+        thumb_lx: snapshot.thumb_lx,
+        thumb_ly: snapshot.thumb_ly,
+        thumb_rx: snapshot.thumb_rx,
+        thumb_ry: snapshot.thumb_ry,
+        padding: 0,
+    };
+
+    session
+        .submit_input(&raw_snapshot)
+        .map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })
+}
+
+#[tauri::command]
+pub fn get_interactive_frame(
+    last_frame_sequence: u64,
+    fetch_pixels: bool,
+) -> Result<InteractiveFrameDto, AppErrorDto> {
+    let lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+        code: "LOCK_ERROR".to_string(),
+        message: "Falha ao adquirir lock de sessão".to_string(),
+        details: None,
+    })?;
+    let session = lock.as_ref().ok_or_else(|| AppErrorDto {
+        code: "NO_ACTIVE_SESSION".to_string(),
+        message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+        details: None,
+    })?;
+
+    let meta = session.get_frame_metadata().map_err(|e| AppErrorDto {
+        code: e.code().to_string(),
+        message: e.to_string(),
+        details: None,
+    })?;
+
+    let metrics_raw = session.get_interactive_metrics().map_err(|e| AppErrorDto {
+        code: e.code().to_string(),
+        message: e.to_string(),
+        details: None,
+    })?;
+
+    let rumble_raw = session.get_rumble_state().map_err(|e| AppErrorDto {
+        code: e.code().to_string(),
+        message: e.to_string(),
+        details: None,
+    })?;
+
+    let has_new_frame = meta.is_valid != 0 && meta.sequence_number > last_frame_sequence;
+    let pixels_base64 = if has_new_frame && fetch_pixels {
+        let raw_pixels = session
+            .copy_frame_pixels(8_294_400)
+            .map_err(|e| AppErrorDto {
+                code: e.code().to_string(),
+                message: e.to_string(),
+                details: None,
+            })?;
+        if raw_pixels.is_empty() {
+            None
+        } else {
+            Some(encode_base64(&raw_pixels))
+        }
+    } else {
+        None
+    };
+
+    Ok(InteractiveFrameDto {
+        frame_sequence: meta.sequence_number,
+        input_sequence: metrics_raw.input_sequence,
+        width: meta.width,
+        height: meta.height,
+        pitch: meta.pitch,
+        pixel_format: meta.pixel_format,
+        has_new_frame,
+        pixels_base64,
+        rumble: RumbleStateDto {
+            left_motor: rumble_raw.left_motor,
+            right_motor: rumble_raw.right_motor,
+        },
+        metrics: InteractiveMetricsDto {
+            frame_sequence: metrics_raw.frame_sequence,
+            input_sequence: metrics_raw.input_sequence,
+            instructions_executed: metrics_raw.instructions_executed,
+            cycles_consumed: metrics_raw.cycles_consumed,
+            unsupported_gpu_count: metrics_raw.unsupported_gpu_count,
+            unsupported_usb_count: metrics_raw.unsupported_usb_count,
+            state: machine_state_to_string(metrics_raw.state).to_string(),
+            stop_reason: stop_reason_code_to_string(metrics_raw.stop_reason_code).to_string(),
+        },
+    })
+}
+
+#[tauri::command]
+pub fn get_unsupported_features(
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<UnsupportedFeatureEntryDto>, AppErrorDto> {
+    let lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+        code: "LOCK_ERROR".to_string(),
+        message: "Falha ao adquirir lock de sessão".to_string(),
+        details: None,
+    })?;
+    let session = lock.as_ref().ok_or_else(|| AppErrorDto {
+        code: "NO_ACTIVE_SESSION".to_string(),
+        message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+        details: None,
+    })?;
+
+    let raw_entries = session
+        .get_unsupported_features(offset, limit)
+        .map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+    let dtos = raw_entries
+        .into_iter()
+        .map(|e| {
+            let subsystem = unsafe {
+                CStr::from_ptr(e.subsystem.as_ptr())
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let capability = unsafe {
+                CStr::from_ptr(e.capability.as_ptr())
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let first_context = unsafe {
+                CStr::from_ptr(e.first_context.as_ptr())
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            UnsupportedFeatureEntryDto {
+                subsystem,
+                capability,
+                identifier: e.identifier,
+                identifier_hex: format!("0x{:04X}", e.identifier),
+                count: e.count,
+                first_context,
+            }
+        })
+        .collect();
+
+    Ok(dtos)
+}
+
+#[tauri::command]
+pub async fn step_title_execution(
+    instruction_budget: Option<u64>,
+) -> Result<MachineSnapshotDto, AppErrorDto> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+            code: "LOCK_ERROR".to_string(),
+            message: "Falha ao adquirir lock de sessão".to_string(),
+            details: None,
+        })?;
+        let session = lock.as_ref().ok_or_else(|| AppErrorDto {
+            code: "NO_ACTIVE_SESSION".to_string(),
+            message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+            details: None,
+        })?;
+
+        let budget = instruction_budget.unwrap_or(1);
+        session.step(budget).map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        let snap = session.get_snapshot().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        Ok(raw_snapshot_to_dto(&snap))
+    })
+    .await
+    .map_err(|e| AppErrorDto {
+        code: "INTERNAL_ERROR".to_string(),
+        message: e.to_string(),
+        details: None,
+    })?
 }

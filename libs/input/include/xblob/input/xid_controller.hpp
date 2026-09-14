@@ -5,8 +5,17 @@
 
 #include <mutex>
 #include <string_view>
+#include <vector>
 
 namespace xblob::input {
+
+struct UnsupportedUsbRequest {
+    u8 request_type{0};
+    u8 request{0};
+    u16 value{0};
+    u16 index{0};
+    u64 count{0};
+};
 
 class XidController final : public usb::UsbDevice {
 public:
@@ -45,10 +54,14 @@ public:
     [[nodiscard]] u16 rumble_left_motor() const noexcept { return rumble_left_; }
     [[nodiscard]] u16 rumble_right_motor() const noexcept { return rumble_right_; }
 
+    // Unsupported requests telemetry
+    [[nodiscard]] u32 unsupported_requests_count() const noexcept;
+    [[nodiscard]] std::vector<UnsupportedUsbRequest> unsupported_requests() const;
+
 private:
-    [[nodiscard]] usb::UsbTransferResult HandleGetDescriptor(u8 desc_type, u8 desc_index,
-                                                             u16 max_len,
-                                                             MutableByteSpan dest) const noexcept;
+    [[nodiscard]] usb::UsbTransferResult
+    HandleGetDescriptor(u8 desc_type, u8 desc_index, u16 max_len, MutableByteSpan dest) noexcept;
+    void RecordUnsupportedRequestLocked(u8 request_type, u8 request, u16 value, u16 index) noexcept;
 
     std::string name_;
     u8 address_{0};
@@ -62,6 +75,7 @@ private:
 
     u16 rumble_left_{0};
     u16 rumble_right_{0};
+    std::vector<UnsupportedUsbRequest> unsupported_requests_{};
 };
 
 } // namespace xblob::input

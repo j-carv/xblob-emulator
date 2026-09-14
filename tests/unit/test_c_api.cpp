@@ -12,7 +12,7 @@
 
 TEST_CASE(TestCApiVersionAndCapabilities) {
     EXPECT_EQ(xblob_get_abi_version_major(), 1u);
-    EXPECT_EQ(xblob_get_abi_version_minor(), 5u);
+    EXPECT_EQ(xblob_get_abi_version_minor(), 6u);
     EXPECT_EQ(xblob_get_abi_version_patch(), 0u);
 
     uint64_t caps = xblob_get_capabilities();
@@ -31,6 +31,10 @@ TEST_CASE(TestCApiVersionAndCapabilities) {
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_MEDIA_BOOT) != 0);
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION) != 0);
     EXPECT_TRUE((caps & XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_NV2A_3D) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_USB_OHCI) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_XID_INPUT) != 0);
+    EXPECT_TRUE((caps & XBLOB_CAPABILITY_INTERACTIVE_SESSION) != 0);
 
     EXPECT_EQ(std::string(xblob_get_product_version()), "0.1.0");
     EXPECT_EQ(std::string(xblob_get_product_name()), "xblob");
@@ -74,7 +78,7 @@ TEST_CASE(TestCApiCoreInfoStructuralCompatibility) {
     info.struct_size = sizeof(xblob_core_info_t);
     EXPECT_EQ(xblob_get_core_info(&info), XBLOB_STATUS_OK);
     EXPECT_EQ(info.abi_version_major, 1u);
-    EXPECT_EQ(info.abi_version_minor, 5u);
+    EXPECT_EQ(info.abi_version_minor, 6u);
     EXPECT_EQ(info.abi_version_patch, 0u);
     EXPECT_EQ(info.capabilities, xblob_get_capabilities());
     EXPECT_EQ(std::string(info.product_name), "xblob");
@@ -664,6 +668,68 @@ TEST_CASE(TestCApiExperimentalExecutionAndDiagnostics) {
 
     xblob_machine_destroy(machine);
     std::filesystem::remove(xbe_path);
+}
+
+TEST_CASE(TestCApiInteractiveGraphicsAndInput) {
+    xblob_machine_t machine = nullptr;
+    EXPECT_EQ(xblob_machine_create(&machine), XBLOB_STATUS_OK);
+    EXPECT_TRUE(machine != nullptr);
+
+    // Initial interactive metrics
+    xblob_interactive_metrics_t metrics{};
+    metrics.struct_size = sizeof(xblob_interactive_metrics_t);
+    EXPECT_EQ(xblob_machine_get_interactive_metrics(machine, &metrics), XBLOB_STATUS_OK);
+    EXPECT_EQ(metrics.frame_sequence, 0ULL);
+    EXPECT_EQ(metrics.input_sequence, 0ULL);
+
+    // Incompatible struct size
+    metrics.struct_size = 2;
+    EXPECT_EQ(xblob_machine_get_interactive_metrics(machine, &metrics),
+              XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION);
+
+    // Submit host input snapshot
+    xblob_host_input_snapshot_t input_snap{};
+    input_snap.struct_size = sizeof(xblob_host_input_snapshot_t);
+    input_snap.sequence = 101;
+    input_snap.connected = 1;
+    input_snap.digital_buttons = 0x10; // Start
+    input_snap.button_a = 255;
+    input_snap.thumb_lx = 5000;
+
+    int accepted = 0;
+    EXPECT_EQ(xblob_machine_submit_input(machine, &input_snap, &accepted), XBLOB_STATUS_OK);
+    EXPECT_EQ(accepted, 1);
+
+    // Verify metrics updated input_sequence
+    metrics.struct_size = sizeof(xblob_interactive_metrics_t);
+    EXPECT_EQ(xblob_machine_get_interactive_metrics(machine, &metrics), XBLOB_STATUS_OK);
+    EXPECT_EQ(metrics.input_sequence, 101ULL);
+
+    // Stale snapshot rejection
+    input_snap.sequence = 50;
+    accepted = 1;
+    EXPECT_EQ(xblob_machine_submit_input(machine, &input_snap, &accepted), XBLOB_STATUS_OK);
+    EXPECT_EQ(accepted, 0);
+
+    // Rumble state inspection
+    xblob_rumble_state_t rumble{};
+    rumble.struct_size = sizeof(xblob_rumble_state_t);
+    EXPECT_EQ(xblob_machine_get_rumble_state(machine, &rumble), XBLOB_STATUS_OK);
+    EXPECT_EQ(rumble.left_motor, 0u);
+    EXPECT_EQ(rumble.right_motor, 0u);
+
+    // Unsupported features inspection & pagination
+    uint32_t count = 0;
+    EXPECT_EQ(xblob_machine_get_unsupported_features_count(machine, &count), XBLOB_STATUS_OK);
+    EXPECT_EQ(count, 0u);
+
+    uint32_t inout_count = 10;
+    xblob_unsupported_feature_entry_t entries[10];
+    EXPECT_EQ(xblob_machine_get_unsupported_features(machine, 0, 10, entries, &inout_count),
+              XBLOB_STATUS_OK);
+    EXPECT_EQ(inout_count, 0u);
+
+    xblob_machine_destroy(machine);
 }
 
 int main() {

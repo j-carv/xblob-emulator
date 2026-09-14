@@ -15,7 +15,7 @@ pub const XBLOB_STATUS_ERROR_INVALID_STATE: XblobStatus = 9;
 pub const XBLOB_STATUS_ERROR_INTERNAL: XblobStatus = 99;
 
 pub const XBLOB_C_API_VERSION_MAJOR: u32 = 1;
-pub const XBLOB_C_API_VERSION_MINOR: u32 = 5;
+pub const XBLOB_C_API_VERSION_MINOR: u32 = 6;
 pub const XBLOB_C_API_VERSION_PATCH: u32 = 0;
 
 pub const XBLOB_CAPABILITY_NONE: u64 = 0;
@@ -34,6 +34,10 @@ pub const XBLOB_CAPABILITY_XDVDFS_VFS: u64 = 1 << 11;
 pub const XBLOB_CAPABILITY_MEDIA_BOOT: u64 = 1 << 12;
 pub const XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION: u64 = 1 << 13;
 pub const XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS: u64 = 1 << 14;
+pub const XBLOB_CAPABILITY_NV2A_3D: u64 = 1 << 15;
+pub const XBLOB_CAPABILITY_USB_OHCI: u64 = 1 << 16;
+pub const XBLOB_CAPABILITY_XID_INPUT: u64 = 1 << 17;
+pub const XBLOB_CAPABILITY_INTERACTIVE_SESSION: u64 = 1 << 18;
 
 pub type XblobMediaType = i32;
 pub const XBLOB_MEDIA_TYPE_UNKNOWN: XblobMediaType = 0;
@@ -311,6 +315,35 @@ extern "C" {
         buffer: *mut c_char,
         inout_buffer_size: *mut usize,
     ) -> XblobStatus;
+
+    pub fn xblob_machine_submit_input(
+        machine: XblobMachineHandle,
+        snapshot: *const XblobHostInputSnapshot,
+        out_accepted: *mut std::os::raw::c_int,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_get_interactive_metrics(
+        machine: *const XblobMachineOpaque,
+        out_metrics: *mut XblobInteractiveMetrics,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_get_rumble_state(
+        machine: *const XblobMachineOpaque,
+        out_rumble: *mut XblobRumbleState,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_get_unsupported_features_count(
+        machine: *const XblobMachineOpaque,
+        out_count: *mut u32,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_get_unsupported_features(
+        machine: *const XblobMachineOpaque,
+        offset: u32,
+        limit: u32,
+        out_entries: *mut XblobUnsupportedFeatureEntry,
+        inout_count: *mut u32,
+    ) -> XblobStatus;
 }
 
 #[repr(C)]
@@ -407,4 +440,58 @@ pub struct XblobTraceSummary {
     pub event_count: u64,
     pub dropped_count: u64,
     pub total_recorded: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobHostInputSnapshot {
+    pub struct_size: u32,
+    pub sequence: u64,
+    pub connected: u8,
+    pub digital_buttons: u8,
+    pub button_a: u8,
+    pub button_b: u8,
+    pub button_x: u8,
+    pub button_y: u8,
+    pub button_black: u8,
+    pub button_white: u8,
+    pub trigger_left: u8,
+    pub trigger_right: u8,
+    pub thumb_lx: i16,
+    pub thumb_ly: i16,
+    pub thumb_rx: i16,
+    pub thumb_ry: i16,
+    pub padding: u16,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobInteractiveMetrics {
+    pub struct_size: u32,
+    pub frame_sequence: u64,
+    pub input_sequence: u64,
+    pub instructions_executed: u64,
+    pub cycles_consumed: u64,
+    pub unsupported_gpu_count: u32,
+    pub unsupported_usb_count: u32,
+    pub state: XblobMachineState,
+    pub stop_reason_code: XblobStopReasonCode,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobUnsupportedFeatureEntry {
+    pub subsystem: [c_char; 32],
+    pub capability: [c_char; 64],
+    pub identifier: u32,
+    pub count: u64,
+    pub first_context: [c_char; 128],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobRumbleState {
+    pub struct_size: u32,
+    pub left_motor: u16,
+    pub right_motor: u16,
 }

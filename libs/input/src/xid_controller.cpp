@@ -98,6 +98,7 @@ void XidController::Reset() noexcept {
     current_report_ = XidGamepadReport{};
     rumble_left_ = 0;
     rumble_right_ = 0;
+    unsupported_requests_.clear();
 }
 
 void XidController::Connect() noexcept {
@@ -135,7 +136,7 @@ bool XidController::SubmitSnapshot(const HostInputSnapshot& snapshot) noexcept {
 usb::UsbTransferResult XidController::HandleGetDescriptor(u8 desc_type,
                                                           [[maybe_unused]] u8 desc_index,
                                                           u16 max_len,
-                                                          MutableByteSpan dest) const noexcept {
+                                                          MutableByteSpan dest) noexcept {
 
     const u8* src_data = nullptr;
     u32 src_len = 0;
@@ -154,6 +155,9 @@ usb::UsbTransferResult XidController::HandleGetDescriptor(u8 desc_type,
         src_len = sizeof(kXidDescriptor);
         break;
     default:
+        RecordUnsupportedRequestLocked(
+            0x80, usb::requests::kGetDescriptor,
+            static_cast<u16>((static_cast<u16>(desc_type) << 8) | desc_index), 0);
         return usb::UsbTransferResult{usb::UsbTransferStatus::Stalled, 0, 4};
     }
 
@@ -221,6 +225,8 @@ usb::UsbTransferResult XidController::HandleControlTransfer(const usb::UsbSetupP
         case usb::requests::kSetInterface:
             return usb::UsbTransferResult{usb::UsbTransferStatus::Success, 0, 0};
         default:
+            RecordUnsupportedRequestLocked(setup.request_type, setup.request, setup.value,
+                                           setup.index);
             return usb::UsbTransferResult{usb::UsbTransferStatus::Stalled, 0, 4};
         }
     } else if (req_type == 1 || req_type == 2) {
@@ -238,18 +244,56 @@ usb::UsbTransferResult XidController::HandleControlTransfer(const usb::UsbSetupP
             if (out_payload.size() >= 6) {
                 // Byte 0: 0x00, Byte 1: 0x06, Bytes 2..3: Left rumble, Bytes 4..5: Right rumble
                 rumble_left_ =
-                    static_cast<u16>(out_payload[2]) | (static_cast<u16>(out_payload[3]) << 8);
+                    static_cast<u16>(static_cast<u16>(out_payload[2]) |
+                                     static_cast<u16>(static_cast<u16>(out_payload[3]) << 8));
                 rumble_right_ =
-                    static_cast<u16>(out_payload[4]) | (static_cast<u16>(out_payload[5]) << 8);
+                    static_cast<u16>(static_cast<u16>(out_payload[4]) |
+                                     static_cast<u16>(static_cast<u16>(out_payload[5]) << 8));
                 return usb::UsbTransferResult{usb::UsbTransferStatus::Success,
                                               static_cast<u32>(out_payload.size()), 0};
             }
             return usb::UsbTransferResult{usb::UsbTransferStatus::Success, 0, 0};
         }
+        RecordUnsupportedRequestLocked(setup.request_type, setup.request, setup.value, setup.index);
         return usb::UsbTransferResult{usb::UsbTransferStatus::Stalled, 0, 4};
     }
 
+    RecordUnsupportedRequestLocked(setup.request_type, setup.request, setup.value, setup.index);
     return usb::UsbTransferResult{usb::UsbTransferStatus::Stalled, 0, 4};
+}
+
+u32 XidController::unsupported_requests_count() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    u32 total = 0;
+    for (const auto& item : unsupported_requests_) {
+        total += static_cast<u32>(item.count);
+    }
+    return total;
+}
+
+std::vector<UnsupportedUsbRequest> XidController::unsupported_requests() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return unsupported_requests_;
+}
+
+void XidController::RecordUnsupportedRequestLocked(u8 request_type, u8 request, u16 value,
+                                                   u16 index) noexcept {
+    for (auto& item : unsupported_requests_) {
+        if (item.request_type == request_type && item.request == request && item.value == value &&
+            item.index == index) {
+            item.count++;
+            return;
+        }
+    }
+    if (unsupported_requests_.size() < 64) {
+        unsupported_requests_.push_back(UnsupportedUsbRequest{
+            .request_type = request_type,
+            .request = request,
+            .value = value,
+            .index = index,
+            .count = 1,
+        });
+    }
 }
 
 usb::UsbTransferResult XidController::HandleInterruptTransfer(u8 endpoint_address,

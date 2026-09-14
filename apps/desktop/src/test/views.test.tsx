@@ -393,4 +393,35 @@ describe('Feature Views and Accessibility', () => {
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  it('InspectionView renders InteractiveSessionPanel, handles disclaimer, focus, and passes axe check', async () => {
+    const { container } = render(
+      <InspectionView
+        report={mockXbeReport}
+        error={null}
+        isLoading={false}
+        onPickFile={vi.fn()}
+        onReset={vi.fn()}
+      />
+    );
+
+    const interactiveTab = screen.getByRole('tab', { name: '🎮 Sessão Interativa' });
+    expect(interactiveTab).toBeInTheDocument();
+    fireEvent.click(interactiveTab);
+
+    expect(screen.getByRole('region', { name: 'Sessão Interativa de Emulação' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Quadro Gráfico da Sessão Interativa NV2A' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /▶️ Iniciar Interativo/i })).toBeDisabled();
+
+    // Check disclaimer
+    const checkbox = screen.getByRole('checkbox');
+    fireEvent.click(checkbox);
+    expect(screen.getByRole('button', { name: /▶️ Iniciar Interativo/i })).toBeEnabled();
+
+    // Verify keyboard mapping hints exist
+    expect(screen.getByText(/W\/A\/S\/D ou Setas/i)).toBeInTheDocument();
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
 });

@@ -20,6 +20,8 @@ target_link_libraries(xblob_machine
     xblob_bus
     xblob_pci
     xblob_gpu
+    xblob_usb
+    xblob_input
     xblob_loader
     xblob_formats
     xblob_vfs

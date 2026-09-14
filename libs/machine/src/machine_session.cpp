@@ -20,7 +20,11 @@ MachineSession::MachineSession(memory::Ram ram)
     : ram_(std::move(ram)), scheduler_(0), pci_bridge_(bus_, pci_registry_),
       gpu_device_(gpu::Nv2aDevice::Create(pci::PciBdf{0, 0, 0})),
       pushbuffer_processor_(std::make_unique<gpu::PushbufferProcessor>(*gpu_device_)),
-      gpu_interrupt_source_(gpu_device_, 0x23) {
+      ohci_controller_(std::make_unique<usb::OhciController>()),
+      gamepad_(std::make_shared<input::XidController>()),
+      usb_guest_memory_(std::make_unique<AddressSpaceUsbGuestMemory>(space_)),
+      ohci_bus_device_(std::make_shared<OhciBusDevice>(*ohci_controller_)),
+      interrupt_controller_(gpu_device_, ohci_controller_.get(), 0x23, 0x24) {
     (void)pci_registry_.RegisterDevice(gpu_device_);
     // Program BAR0 (16MB MMIO at 0xFD000000)
     (void)pci_bridge_.ProgramBar(pci::PciBdf{0, 0, 0}, 0, 0xFD000000u);
@@ -30,11 +34,16 @@ MachineSession::MachineSession(memory::Ram ram)
     (void)pci_bridge_.SetMemorySpaceEnabled(pci::PciBdf{0, 0, 0}, true);
     // Connect bus to address space for MMIO (0xFD000000..0xFE000000)
     (void)memory::MapBusMmio(space_, 0xFD000000u, 0x01000000u, bus_);
+    // Attach XID gamepad to OHCI port 0
+    (void)ohci_controller_->AttachDevice(0, gamepad_);
+    // Map OHCI USB MMIO (0xFED00000..0xFED01000)
+    (void)bus_.MapDevice(0xFED00000u, 0x1000u, ohci_bus_device_);
+    (void)memory::MapBusMmio(space_, 0xFED00000u, 0x1000u, bus_);
     // Map entire physical RAM into address space
     (void)space_.MapRam(0x00000000, static_cast<GuestSize>(ram_.size()), ram_, 0,
                         memory::MemoryPermission::All);
     // Connect CPU interrupt source
-    cpu_.SetInterruptSource(&gpu_interrupt_source_);
+    cpu_.SetInterruptSource(&interrupt_controller_);
 
     // Connect CPU trap handler for synthetic kernel HLE interrupts (INT 0x2D)
     cpu_.SetTrapHandler([this](u8 vector, cpu::CpuContext& ctx) -> Result<bool> {
@@ -369,6 +378,60 @@ CompatibilityDiagnostic MachineSession::GetCompatibilityDiagnostic() const {
         diag.total_cycles = scheduler_.current_cycle();
     }
     diag.recent_trace = trace_buffer_.Snapshot();
+
+    // Aggregate GPU 3D unsupported methods
+    if (pushbuffer_processor_) {
+        const auto& gpu_unsupported = pushbuffer_processor_->ctx_3d().unsupported_methods();
+        for (const auto& entry : gpu_unsupported) {
+            char cap_buf[64];
+            std::snprintf(cap_buf, sizeof(cap_buf), "NV2A Method 0x%04X", entry.method);
+            char ctx_buf[128];
+            std::snprintf(ctx_buf, sizeof(ctx_buf), "Subchannel %u, Class 0x%04X, Param 0x%08X",
+                          entry.subchannel, entry.class_id, entry.parameter);
+            diag.unsupported_features.push_back(UnsupportedFeatureEntry{
+                .subsystem = "GPU",
+                .capability = cap_buf,
+                .identifier = entry.method,
+                .count = entry.count,
+                .first_context = ctx_buf,
+            });
+        }
+    }
+
+    // Aggregate Kernel unsupported exports if any recorded
+    if (kernel_.registry().last_unsupported_export().has_value()) {
+        const auto& ue = *kernel_.registry().last_unsupported_export();
+        char cap_buf[64];
+        std::snprintf(cap_buf, sizeof(cap_buf), "Ordinal %u", ue.ordinal);
+        diag.unsupported_features.push_back(UnsupportedFeatureEntry{
+            .subsystem = "Kernel",
+            .capability = ue.name.empty() ? cap_buf : ue.name,
+            .identifier = ue.ordinal,
+            .count = ue.call_count,
+            .first_context = "Synthetic Thunk Caller",
+        });
+    }
+
+    // Aggregate USB unsupported requests if any recorded
+    if (gamepad_) {
+        const auto usb_unsupported = gamepad_->unsupported_requests();
+        for (const auto& entry : usb_unsupported) {
+            char cap_buf[64];
+            std::snprintf(cap_buf, sizeof(cap_buf), "USB Request 0x%02X (Type 0x%02X)",
+                          entry.request, entry.request_type);
+            char ctx_buf[128];
+            std::snprintf(ctx_buf, sizeof(ctx_buf), "Value 0x%04X, Index 0x%04X", entry.value,
+                          entry.index);
+            diag.unsupported_features.push_back(UnsupportedFeatureEntry{
+                .subsystem = "USB",
+                .capability = cap_buf,
+                .identifier = (static_cast<u32>(entry.request_type) << 8) | entry.request,
+                .count = entry.count,
+                .first_context = ctx_buf,
+            });
+        }
+    }
+
     return diag;
 }
 
@@ -709,6 +772,20 @@ void MachineSession::ExecuteRunningSliceLocked(std::unique_lock<std::mutex>& /*l
         }
     }
 
+    // Deterministic USB OHCI frame processing (~1ms / 50000 cycles)
+    constexpr Cycle kUsbFrameCycleInterval = 50000;
+    if (scheduler_.current_cycle() >= last_usb_frame_cycle_ + kUsbFrameCycleInterval) {
+        last_usb_frame_cycle_ = scheduler_.current_cycle();
+        if (ohci_controller_ && usb_guest_memory_) {
+            (void)ohci_controller_->ProcessFrame(*usb_guest_memory_);
+        }
+    }
+
+    // Frame pacing / backpressure: sync frame sequence
+    if (gpu_device_ && gpu_device_->frame_counter() > frame_sequence_) {
+        frame_sequence_ = gpu_device_->frame_counter();
+    }
+
     last_snapshot_ = TakeSnapshotLocked();
 
     if (state_ != MachineState::Running) {
@@ -855,6 +932,46 @@ gpu::GpuFrameMetadata MachineSession::GetLatestFrameMetadata() const noexcept {
 Result<std::size_t> MachineSession::CopyLatestFrame(std::span<u8> destination) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return gpu_device_->front_surface().CopyRawPixels(destination);
+}
+
+Result<bool> MachineSession::SubmitHostInput(const input::HostInputSnapshot& snapshot) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!gamepad_) {
+        return Error{ErrorCode::InvalidState, "Gamepad não inicializado"};
+    }
+    bool accepted = gamepad_->SubmitSnapshot(snapshot);
+    if (accepted) {
+        input_sequence_ = snapshot.sequence;
+    }
+    return accepted;
+}
+
+InteractiveMetrics MachineSession::GetInteractiveMetrics() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    InteractiveMetrics m{};
+    m.frame_sequence = frame_sequence_;
+    m.input_sequence = input_sequence_;
+    m.instructions_executed = total_instructions_executed_;
+    m.cycles_consumed = scheduler_.current_cycle();
+    if (pushbuffer_processor_) {
+        m.unsupported_gpu_count = pushbuffer_processor_->ctx_3d().total_unsupported_methods_count();
+    }
+    if (gamepad_) {
+        m.unsupported_usb_count = gamepad_->unsupported_requests_count();
+    }
+    m.state_val = static_cast<u8>(state_);
+    m.stop_reason = last_stop_reason_.code;
+    return m;
+}
+
+u64 MachineSession::frame_sequence() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return frame_sequence_;
+}
+
+u64 MachineSession::input_sequence() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return input_sequence_;
 }
 
 } // namespace xblob::machine

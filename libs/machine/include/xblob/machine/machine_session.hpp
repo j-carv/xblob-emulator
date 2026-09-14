@@ -8,16 +8,22 @@
 #include "xblob/cpu/cpu.hpp"
 #include "xblob/gpu/nv2a_device.hpp"
 #include "xblob/gpu/pushbuffer_processor.hpp"
+#include "xblob/input/input_types.hpp"
+#include "xblob/input/xid_controller.hpp"
 #include "xblob/io/byte_source.hpp"
 #include "xblob/kernel/kernel_hle.hpp"
 #include "xblob/loader/xbe_loader.hpp"
 #include "xblob/machine/execution_types.hpp"
 #include "xblob/machine/gpu_interrupt_source.hpp"
+#include "xblob/machine/machine_interrupt_controller.hpp"
+#include "xblob/machine/ohci_bus_device.hpp"
 #include "xblob/machine/trace_buffer.hpp"
+#include "xblob/machine/usb_guest_memory_adapter.hpp"
 #include "xblob/memory/address_space.hpp"
 #include "xblob/memory/ram.hpp"
 #include "xblob/pci/pci_bus_bridge.hpp"
 #include "xblob/pci/pci_registry.hpp"
+#include "xblob/usb/ohci_controller.hpp"
 #include "xblob/vfs/vfs.hpp"
 
 #include <atomic>
@@ -148,6 +154,17 @@ public:
     [[nodiscard]] gpu::GpuFrameMetadata GetLatestFrameMetadata() const noexcept;
     Result<std::size_t> CopyLatestFrame(std::span<u8> destination) const;
 
+    // Interactive Input, USB and Metrics (Added in Milestone 8 / ABI 1.6)
+    [[nodiscard]] const usb::OhciController& ohci() const noexcept { return *ohci_controller_; }
+    [[nodiscard]] usb::OhciController& ohci() noexcept { return *ohci_controller_; }
+    [[nodiscard]] const input::XidController& gamepad() const noexcept { return *gamepad_; }
+    [[nodiscard]] input::XidController& gamepad() noexcept { return *gamepad_; }
+
+    Result<bool> SubmitHostInput(const input::HostInputSnapshot& snapshot);
+    [[nodiscard]] InteractiveMetrics GetInteractiveMetrics() const;
+    [[nodiscard]] u64 frame_sequence() const noexcept;
+    [[nodiscard]] u64 input_sequence() const noexcept;
+
 private:
     explicit MachineSession(memory::Ram ram);
 
@@ -188,7 +205,14 @@ private:
     pci::PciBusBridge pci_bridge_;
     std::shared_ptr<gpu::Nv2aDevice> gpu_device_;
     std::unique_ptr<gpu::PushbufferProcessor> pushbuffer_processor_;
-    GpuInterruptSource gpu_interrupt_source_;
+    std::unique_ptr<usb::OhciController> ohci_controller_;
+    std::shared_ptr<input::XidController> gamepad_;
+    std::unique_ptr<AddressSpaceUsbGuestMemory> usb_guest_memory_;
+    std::shared_ptr<OhciBusDevice> ohci_bus_device_;
+    MachineInterruptController interrupt_controller_;
+    Cycle last_usb_frame_cycle_{0};
+    u64 frame_sequence_{0};
+    u64 input_sequence_{0};
 
     std::shared_ptr<Vfs> vfs_;
     std::shared_ptr<const ByteSource> media_source_;
