@@ -3,6 +3,7 @@
 #include "xblob/common/types.hpp"
 
 #include <deque>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,10 +52,10 @@ public:
                          std::string_view export_name = "");
     void RecordThreadSwitch(Cycle cycle, u32 from_tid, u32 to_tid, GuestAddr next_eip);
 
-    [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
-    [[nodiscard]] std::size_t size() const noexcept { return events_.size(); }
-    [[nodiscard]] u64 total_recorded() const noexcept { return total_recorded_; }
-    [[nodiscard]] u64 dropped_count() const noexcept { return dropped_count_; }
+    [[nodiscard]] std::size_t capacity() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept;
+    [[nodiscard]] u64 total_recorded() const noexcept;
+    [[nodiscard]] u64 dropped_count() const noexcept;
 
     [[nodiscard]] std::vector<TraceEvent> Snapshot() const;
     [[nodiscard]] std::string FormatText() const;
@@ -66,8 +67,9 @@ private:
     std::deque<TraceEvent> events_;
     u64 total_recorded_{0};
     u64 dropped_count_{0};
+    mutable std::mutex mutex_;
 
-    void PushEvent(TraceEvent event);
+    void PushEventLocked(TraceEvent event);
 };
 
 } // namespace xblob::machine
