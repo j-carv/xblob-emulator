@@ -29,6 +29,26 @@ Result<ExecutionResult> ExecuteAlu(const DecodedInstruction& inst, CpuContext& c
                                    MemoryType& mem);
 
 template <typename MemoryType>
+Result<ExecutionResult> ExecuteShift(const DecodedInstruction& inst, CpuContext& ctx,
+                                     MemoryType& mem);
+
+template <typename MemoryType>
+Result<ExecutionResult> ExecuteMulDiv(const DecodedInstruction& inst, CpuContext& ctx,
+                                      MemoryType& mem, u32 current_eip);
+
+template <typename MemoryType>
+Result<ExecutionResult> ExecuteBitExt(const DecodedInstruction& inst, CpuContext& ctx,
+                                      MemoryType& mem);
+
+template <typename MemoryType>
+Result<ExecutionResult> ExecuteString(const DecodedInstruction& inst, CpuContext& ctx,
+                                      MemoryType& mem, u32 current_eip);
+
+template <typename MemoryType>
+Result<ExecutionResult> ExecuteAtomic(const DecodedInstruction& inst, CpuContext& ctx,
+                                      MemoryType& mem);
+
+template <typename MemoryType>
 Result<ExecutionResult> ExecuteStack(const DecodedInstruction& inst, CpuContext& ctx,
                                      MemoryType& mem, u32 current_eip);
 

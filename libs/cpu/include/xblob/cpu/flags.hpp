@@ -103,6 +103,60 @@ inline constexpr u32 kArithmeticFlagsMask =
     return flags;
 }
 
+[[nodiscard]] constexpr u32 CalculateSubFlags8(u8 a, u8 b, u32 current_flags) noexcept {
+    const u8 res = static_cast<u8>(a - b);
+
+    const bool cf = (a < b);
+    const bool af = (a & 0x0F) < (b & 0x0F);
+    const bool zf = (res == 0);
+    const bool sf = (res & 0x80) != 0;
+    const bool of = (((a ^ b) & (a ^ res) & 0x80) != 0);
+    const bool pf = CalculateParity(res);
+
+    u32 flags = (current_flags & ~kArithmeticFlagsMask) | kFlagReserved1;
+    if (cf)
+        flags |= kFlagCF;
+    if (pf)
+        flags |= kFlagPF;
+    if (af)
+        flags |= kFlagAF;
+    if (zf)
+        flags |= kFlagZF;
+    if (sf)
+        flags |= kFlagSF;
+    if (of)
+        flags |= kFlagOF;
+
+    return flags;
+}
+
+[[nodiscard]] constexpr u32 CalculateSubFlags16(u16 a, u16 b, u32 current_flags) noexcept {
+    const u16 res = static_cast<u16>(a - b);
+
+    const bool cf = (a < b);
+    const bool af = (a & 0x0F) < (b & 0x0F);
+    const bool zf = (res == 0);
+    const bool sf = (res & 0x8000) != 0;
+    const bool of = (((a ^ b) & (a ^ res) & 0x8000) != 0);
+    const bool pf = CalculateParity(static_cast<u8>(res & 0xFF));
+
+    u32 flags = (current_flags & ~kArithmeticFlagsMask) | kFlagReserved1;
+    if (cf)
+        flags |= kFlagCF;
+    if (pf)
+        flags |= kFlagPF;
+    if (af)
+        flags |= kFlagAF;
+    if (zf)
+        flags |= kFlagZF;
+    if (sf)
+        flags |= kFlagSF;
+    if (of)
+        flags |= kFlagOF;
+
+    return flags;
+}
+
 [[nodiscard]] constexpr u32 CalculateSbbFlags(u32 a, u32 b, bool cf_in,
                                               u32 current_flags) noexcept {
     const u64 cin = cf_in ? 1ULL : 0ULL;

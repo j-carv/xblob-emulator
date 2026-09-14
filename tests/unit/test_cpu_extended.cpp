@@ -375,6 +375,9 @@ TEST_CASE(TestIretPrivilegeRejection) {
     EXPECT_EQ(ctx.GetGpr(Reg32::ESP), 0x5000U);
 }
 
+#include "test_cpu_expansion_part1.inl"
+#include "test_cpu_expansion_part2.inl"
+
 int main() {
     return xblob::testing::RunAllTests();
 }

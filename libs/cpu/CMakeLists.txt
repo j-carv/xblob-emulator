@@ -5,6 +5,11 @@ add_library(xblob_cpu STATIC
   src/decoder.cpp
   src/executor_data.cpp
   src/executor_alu.cpp
+  src/executor_shift.cpp
+  src/executor_muldiv.cpp
+  src/executor_bit_ext.cpp
+  src/executor_string.cpp
+  src/executor_atomic.cpp
   src/executor_stack.cpp
   src/executor_branch.cpp
   src/executor_interrupt.cpp

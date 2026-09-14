@@ -10,15 +10,16 @@ void Cpu::Reset() noexcept {
     lifecycle_ = CpuLifecycle::Running;
     last_fault_ = std::nullopt;
     last_exception_ = std::nullopt;
+    last_unsupported_ = std::nullopt;
 }
 
 template <typename MemoryType>
 StepOutcome Cpu::StepGeneric(MemoryType& memory) {
     if (lifecycle_ == CpuLifecycle::Halted) {
-        return StepOutcome{StepResult::Halted, 0, std::nullopt, last_exception_};
+        return StepOutcome{StepResult::Halted, 0, std::nullopt, last_exception_, last_unsupported_};
     }
     if (lifecycle_ == CpuLifecycle::Faulted) {
-        return StepOutcome{StepResult::Faulted, 0, last_fault_, last_exception_};
+        return StepOutcome{StepResult::Faulted, 0, last_fault_, last_exception_, last_unsupported_};
     }
 
     // 1. Check interrupt boundary
@@ -31,16 +32,28 @@ StepOutcome Cpu::StepGeneric(MemoryType& memory) {
             if (!del_res) {
                 lifecycle_ = CpuLifecycle::Faulted;
                 last_fault_ = del_res.error();
-                return StepOutcome{StepResult::Faulted, cycles::kInt, last_fault_, last_exception_};
+                return StepOutcome{StepResult::Faulted, cycles::kInt, last_fault_, last_exception_,
+                                   last_unsupported_};
             }
-            return StepOutcome{StepResult::Ok, cycles::kInt, std::nullopt, std::nullopt};
+            return StepOutcome{StepResult::Ok, cycles::kInt, std::nullopt, std::nullopt,
+                               std::nullopt};
         }
     }
 
     // 2. Decode instruction
     const u32 start_eip = context_.eip;
-    auto decode_res = Decoder::Decode(context_, memory, start_eip);
+    std::optional<UnsupportedFormInfo> unsupported_info{std::nullopt};
+    auto decode_res = Decoder::Decode(context_, memory, start_eip, &unsupported_info);
     if (!decode_res) {
+        if (unsupported_info.has_value()) {
+            last_unsupported_ = unsupported_info;
+        }
+        if (decode_res.error().code == ErrorCode::UnsupportedFeature) {
+            lifecycle_ = CpuLifecycle::Faulted;
+            last_fault_ = decode_res.error();
+            return StepOutcome{StepResult::Faulted, 0, last_fault_, std::nullopt,
+                               last_unsupported_};
+        }
         if constexpr (requires { memory.last_page_fault(); }) {
             if (const auto& pf = memory.last_page_fault(); pf.has_value()) {
                 last_exception_ = CpuException{ExceptionVector::PageFault, pf->error_code,
@@ -58,12 +71,19 @@ StepOutcome Cpu::StepGeneric(MemoryType& memory) {
         }
         lifecycle_ = CpuLifecycle::Faulted;
         last_fault_ = decode_res.error();
-        return StepOutcome{StepResult::Faulted, 0, last_fault_, last_exception_};
+        return StepOutcome{StepResult::Faulted, 0, last_fault_, last_exception_, last_unsupported_};
     }
 
     // 3. Execute instruction
     auto exec_res = Executor::Execute(*decode_res, context_, memory, start_eip, trap_handler_);
     if (!exec_res) {
+        if (exec_res.error().code == ErrorCode::UnsupportedFeature) {
+            last_unsupported_ = UnsupportedFormInfo{start_eip, {}, exec_res.error().message};
+            lifecycle_ = CpuLifecycle::Faulted;
+            last_fault_ = exec_res.error();
+            return StepOutcome{StepResult::Faulted, decode_res->cycles, last_fault_, std::nullopt,
+                               last_unsupported_};
+        }
         if constexpr (requires { memory.last_page_fault(); }) {
             if (const auto& pf = memory.last_page_fault(); pf.has_value()) {
                 last_exception_ = CpuException{ExceptionVector::PageFault, pf->error_code,
@@ -82,14 +102,37 @@ StepOutcome Cpu::StepGeneric(MemoryType& memory) {
         }
         lifecycle_ = CpuLifecycle::Faulted;
         last_fault_ = exec_res.error();
-        return StepOutcome{StepResult::Faulted, decode_res->cycles, last_fault_, last_exception_};
+        return StepOutcome{StepResult::Faulted, decode_res->cycles, last_fault_, last_exception_,
+                           last_unsupported_};
+    }
+
+    if (exec_res->exception.has_value()) {
+        last_exception_ = exec_res->exception;
+        if (context_.idtr.limit > 0) {
+            auto res = Executor::DeliverGate(static_cast<u8>(exec_res->exception->vector), context_,
+                                             memory, exec_res->exception->error_code, false,
+                                             exec_res->exception->fault_eip);
+            if (res) {
+                return StepOutcome{StepResult::Ok, decode_res->cycles, std::nullopt, std::nullopt,
+                                   std::nullopt};
+            }
+        }
+        lifecycle_ = CpuLifecycle::Faulted;
+        last_fault_ = Error{ErrorCode::ExecutionFault,
+                            (exec_res->exception->vector == ExceptionVector::DivideError)
+                                ? "Erro de divisão (#DE)"
+                                : "Exceção de CPU",
+                            exec_res->exception->fault_eip};
+        return StepOutcome{StepResult::Faulted, decode_res->cycles, last_fault_, last_exception_,
+                           std::nullopt};
     }
 
     // 4. Commit
     if (exec_res->halted) {
         context_.eip = start_eip + decode_res->length;
         lifecycle_ = CpuLifecycle::Halted;
-        return StepOutcome{StepResult::Halted, decode_res->cycles, std::nullopt, std::nullopt};
+        return StepOutcome{StepResult::Halted, decode_res->cycles, std::nullopt, std::nullopt,
+                           std::nullopt};
     }
 
     if (exec_res->branched) {
@@ -98,7 +141,8 @@ StepOutcome Cpu::StepGeneric(MemoryType& memory) {
         context_.eip = start_eip + decode_res->length;
     }
 
-    return StepOutcome{StepResult::Ok, decode_res->cycles, std::nullopt, std::nullopt};
+    return StepOutcome{StepResult::Ok, decode_res->cycles, std::nullopt, std::nullopt,
+                       std::nullopt};
 }
 
 template <typename MemoryType>
@@ -113,7 +157,9 @@ Result<void> Cpu::RaiseException(CpuException ex, MemoryType& mem) {
     }
 
     lifecycle_ = CpuLifecycle::Faulted;
-    if (ex.vector == ExceptionVector::InvalidOpcode) {
+    if (ex.vector == ExceptionVector::DivideError) {
+        last_fault_ = Error{ErrorCode::ExecutionFault, "Erro de divisão (#DE)", ex.fault_eip};
+    } else if (ex.vector == ExceptionVector::InvalidOpcode) {
         last_fault_ = Error{ErrorCode::InvalidOpcode, "Opcode inválido (#UD)", ex.fault_eip};
     } else if (ex.vector == ExceptionVector::PageFault) {
         last_fault_ = Error{ErrorCode::AccessViolation, "Falha de página (#PF)", ex.cr2};
@@ -144,6 +190,7 @@ RunOutcome Cpu::RunWithBudgetGeneric(MemoryType& memory, u64 max_instructions, C
             outcome.status = RunStatus::Faulted;
             outcome.fault = step.fault;
             outcome.exception = step.exception;
+            outcome.unsupported_form = step.unsupported_form;
             return outcome;
         }
 

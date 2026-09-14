@@ -35,6 +35,45 @@ enum class InstructionId : u16 {
     Sti,
     Iret,
     Int,
+
+    // Shifts and rotates
+    Shl,
+    Shr,
+    Sar,
+    Rol,
+    Ror,
+
+    // Multiply and divide
+    Mul,
+    Imul,
+    Div,
+    Idiv,
+
+    // Bit manipulation and extensions
+    Movzx,
+    Movsx,
+    Cdq,
+    Bt,
+    Setcc,
+
+    // String operations
+    Movs,
+    Stos,
+    Lods,
+    Cmps,
+    Scas,
+    Cld,
+    Std,
+
+    // Atomic / exchange
+    Xchg,
+    Cmpxchg,
+};
+
+struct UnsupportedFormInfo {
+    GuestAddr fault_eip{0};
+    std::vector<u8> opcode_bytes{};
+    std::string reason{};
 };
 
 enum class ConditionCode : u8 {
@@ -106,10 +145,17 @@ struct DecodedInstruction {
     Cycle cycles{1};
     Operand op1{};
     Operand op2{};
+    Operand op3{};
     ConditionCode condition{ConditionCode::Z};
     u32 branch_target{0};
     u16 ret_pop_bytes{0};
     u8 int_vector{0};
+    bool rep{false};
+    bool repne{false};
+    bool lock{false};
+    bool op_size_override{false};
+    bool addr_size_override{false};
+    u8 data_size{4};
 };
 
 } // namespace xblob::cpu
