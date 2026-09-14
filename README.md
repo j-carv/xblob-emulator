@@ -7,9 +7,9 @@
 ### Estado Atual do Projeto: Marco 8 (Fundação Gráfica e de Entrada Interativa, ABI C 1.6)
 
 > [!IMPORTANT]
-> **Aviso de Estado Real**: O projeto encontra-se atualmente no **Marco 7**. 
+> **Aviso de Estado Real**: O projeto encontra-se atualmente no **Marco 8**.
 > A meta final do **xblob** é carregar e executar/jogar arquivos `.xbe`, `.iso` e `.xiso` fornecidos legalmente pelo usuário.
-> No **marco atual**, o emulador disponibiliza execução assíncrona experimental de títulos com worker em background, fila de comandos thread-safe, budgets determinísticos de execução (instruções, ciclos, wall-time), watchdog cooperativo, captura de snapshots de estado (registradores IA-32, pilha bounded), diagnósticos de compatibilidade com identificação do primeiro bloqueador, expansão de instruções IA-32 (prefixos, shifts/rotates, mul/div, strings com REP, atômicos), expansão de serviços de kernel sintético HLE (threads, sincronização, tempo, I/O, memória virtual), e interface desktop acessível com consentimento prévio para execução de mídia local. **Ainda não declara suporte a jogabilidade comercial completa** e não garante taxa de quadros ou compatibilidade de jogos.
+> No **marco atual**, o emulador disponibiliza execução assíncrona e interativa experimental de títulos, com worker em background, fila de comandos thread-safe, budgets determinísticos, watchdog cooperativo, snapshots de estado, diagnóstico do primeiro bloqueador, pipeline NV2A 3D inicial, publicação bounded de frames e entrada USB OHCI/XID por teclado ou gamepad. A cobertura de IA-32 e dos serviços de kernel HLE continua incremental. **Isso não demonstra boot completo, gráficos corretos, compatibilidade ou jogabilidade de títulos comerciais**, nem garante taxa de quadros.
 > Todo o conteúdo do usuário permanece estritamente local.
 > O repositório e os testes NUNCA incluem, distribuem ou dependem de jogos comerciais, BIOS, chaves criptográficas, firmwares ou headers proprietários.
 
@@ -102,7 +102,7 @@ Conforme governança definida em [AGENTS.md](AGENTS.md):
 - **Frontend / UI**: Interface moderna, acessível (WCAG 2.2 AA) e responsiva construída em **React 19 + TypeScript**, com abas de inspeção, diagnósticos e preview de framebuffer.
 - **Shell Desktop**: **Tauri v2**, empacotando o aplicativo com segurança, CSP rigoroso (`connect-src 'none'`) e baixo consumo de recursos nativos.
 - **Núcleo de Emulação**: Motor escrito exclusivamente em **C/C++20**.
-- **Ponte de Comunicação**: O núcleo em C/C++ expõe uma **ABI C estável** (`extern "C"`, versão 1.3). O código Rust no Tauri v2 atua estritamente como adaptador RAII de FFI/IPC, sendo expressamente proibido de conter lógica de emulação ou regras de domínio.
+- **Ponte de Comunicação**: O núcleo em C/C++ expõe uma **ABI C estável** (`extern "C"`, versão 1.6). O código Rust no Tauri v2 atua estritamente como adaptador RAII de FFI/IPC, sendo expressamente proibido de conter lógica de emulação ou regras de domínio.
 
 ---
 

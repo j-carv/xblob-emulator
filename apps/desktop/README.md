@@ -18,8 +18,8 @@ xblob Desktop is structured into strictly isolated architectural layers:
    - Enforces a restricted Content Security Policy (CSP) with arbitrary network, shell, and filesystem write access completely disabled.
 
 3. **Core C ABI (`libs/c_api`)**:
-   - Pure C11 ABI boundary (`xblob/c_api.h`) with ABI version 1.3.
-   - Exposes opaque handles, explicit error codes, ABI version negotiation, capability discovery, UTF-8 safe buffers, machine diagnostic preparation, and bounded GPU frame snapshots.
+   - Pure C11 ABI boundary (`xblob/c_api.h`) with ABI version 1.6 (backward compatible with 1.0–1.5).
+   - Exposes opaque handles, explicit error codes, ABI version negotiation, capability discovery, UTF-8 safe buffers, interactive machine controls, bounded frame and input snapshots, metrics, and capability diagnostics.
    - Traps all C++ exceptions (`noexcept` boundary).
 
 4. **Core C++ Engine (`libs/bus`, `libs/pci`, `libs/gpu`, `libs/memory`, `libs/loader`, `libs/machine`, `libs/formats`, `libs/io`, `libs/common`)**:
@@ -32,9 +32,9 @@ xblob Desktop is structured into strictly isolated architectural layers:
 
 ## Disclaimer & Scope
 
-> **Important**: The ultimate product goal of **xblob** is to load and run/play `.xbe`, `.iso`, and `.xiso` titles legally provided by the user. Commercial media is supported as local user input, while the repository strictly prohibits distributing, embedding, or depending on proprietary BIOS, keys, firmware, official SDKs, or games.
+> **Important**: The ultimate product goal of **xblob** is to load and run/play `.xbe`, `.iso`, and `.xiso` titles legally provided by the user. Such media may be supplied as local user input, while the repository strictly prohibits distributing, embedding, or depending on proprietary BIOS, keys, firmware, official SDKs, or games.
 > 
-> In the **current milestone**, the application operates in a diagnostic and structural validation phase: it **does not yet execute commercial games**, and graphical presentation is bounded to synthetic clean-room fixtures. Interactive controls are strictly diagnostic (no "Play" or "Run" buttons) until the end-to-end execution pipeline is validated.
+> In the **current milestone (Milestone 8)**, the application can prepare local media and attempt bounded, interactive experimental execution with frame presentation and keyboard/gamepad input. This does **not** demonstrate complete boot, correct rendering, compatibility, or playable support for any commercial title. Repository tests and fixtures remain exclusively synthetic and clean-room.
 
 ## System Requirements
 
