@@ -282,6 +282,159 @@ TEST_CASE(TestMediaBootPipelineCorruptedXbeRollback) {
     EXPECT_EQ(session->state(), MachineState::Created);
 }
 
+TEST_CASE(TestMachineSessionAsyncWorkerLifecycle) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    // Program: ADD EAX, 1; HLT
+    auto xbe = testing::CreateValidSyntheticXbe(0x44440001, "Async Test", 1);
+    xbe[0x1000] = 0x83;
+    xbe[0x1001] = 0xC0;
+    xbe[0x1002] = 0x01; // ADD EAX, 1
+    xbe[0x1003] = 0xF4; // HLT
+    MemoryByteSource src(xbe);
+    EXPECT_TRUE(session->Prepare(src).has_value());
+
+    ExecutionBudgets budgets{};
+    budgets.max_instructions = 100;
+    budgets.max_cycles = 1000;
+    budgets.chunk_instructions = 10;
+
+    EXPECT_TRUE(session->Start(budgets).has_value());
+    EXPECT_TRUE(session->WaitCompletion(2000).value_or(false));
+    EXPECT_EQ(session->state(), MachineState::Paused);
+
+    auto snap = session->GetSnapshot();
+    EXPECT_EQ(snap.last_stop_reason.code, StopReasonCode::Halted);
+    EXPECT_EQ(snap.cpu_context.GetGpr(cpu::Reg32::EAX), 1u);
+    EXPECT_EQ(snap.instructions_executed, 2u);
+
+    EXPECT_TRUE(session->Stop().has_value());
+    EXPECT_EQ(session->state(), MachineState::Stopped);
+}
+
+TEST_CASE(TestMachineSessionWatchdogAndWallTimeBudget) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    // Infinite loop: 0xEB, 0xFE (JMP $)
+    auto xbe = testing::CreateValidSyntheticXbe(0x44440002, "Watchdog Test", 1);
+    xbe[0x1000] = 0xEB;
+    xbe[0x1001] = 0xFE;
+    MemoryByteSource src(xbe);
+    EXPECT_TRUE(session->Prepare(src).has_value());
+
+    ExecutionBudgets budgets{};
+    budgets.max_wall_time_ms = 40; // 40ms watchdog limit
+    budgets.chunk_instructions = 50;
+
+    EXPECT_TRUE(session->Start(budgets).has_value());
+    EXPECT_TRUE(session->WaitCompletion(3000).value_or(false));
+    EXPECT_EQ(session->state(), MachineState::Paused);
+
+    auto snap = session->GetSnapshot();
+    EXPECT_EQ(snap.last_stop_reason.code, StopReasonCode::BudgetWallTimeExhausted);
+    EXPECT_TRUE(snap.instructions_executed > 0);
+
+    EXPECT_TRUE(session->Stop().has_value());
+}
+
+TEST_CASE(TestMachineSessionStructuredStopReasonUnsupportedExport) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    // Program: MOV EAX, 0x8888; INT 0x2D; RET
+    auto xbe = testing::CreateValidSyntheticXbe(0x44440003, "Export Test", 1);
+    xbe[0x1000] = 0xB8;
+    xbe[0x1001] = 0x88;
+    xbe[0x1002] = 0x88;
+    xbe[0x1003] = 0x00;
+    xbe[0x1004] = 0x00; // MOV EAX, 0x8888
+    xbe[0x1005] = 0xCD;
+    xbe[0x1006] = 0x2D; // INT 0x2D
+    xbe[0x1007] = 0xC3; // RET
+    MemoryByteSource src(xbe);
+    EXPECT_TRUE(session->Prepare(src).has_value());
+
+    auto step_res = session->Step(2);
+    EXPECT_TRUE(step_res.has_value());
+    EXPECT_EQ(session->state(), MachineState::Faulted);
+
+    auto snap = session->GetSnapshot();
+    EXPECT_EQ(snap.last_stop_reason.code, StopReasonCode::UnsupportedExport);
+    EXPECT_EQ(snap.last_stop_reason.ordinal_or_opcode, 0x8888u);
+    EXPECT_EQ(snap.last_stop_reason.category, "Kernel");
+
+    auto diag = session->GetCompatibilityDiagnostic();
+    EXPECT_EQ(diag.first_blocker.code, StopReasonCode::UnsupportedExport);
+    EXPECT_EQ(diag.first_blocker.ordinal_or_opcode, 0x8888u);
+}
+
+TEST_CASE(TestMachineSessionSnapshotStackInspection) {
+    auto session_res = MachineSession::Create(memory::kRamSizeRetail);
+    EXPECT_TRUE(session_res.has_value());
+    auto session = std::move(*session_res);
+
+    auto xbe = testing::CreateValidSyntheticXbe(0x44440004, "Stack Test", 1);
+    xbe[0x1000] = 0xF4; // HLT
+    MemoryByteSource src(xbe);
+    EXPECT_TRUE(session->Prepare(src).has_value());
+
+    // 1. ESP in valid RAM: write pattern to stack
+    session->cpu().context().SetGpr(cpu::Reg32::ESP, 0x00040000);
+    EXPECT_TRUE(session->address_space().Write32(0x00040000, 0x11223344).has_value());
+    EXPECT_TRUE(session->address_space().Write32(0x00040004, 0x55667788).has_value());
+
+    auto snap1 = session->GetSnapshot();
+    EXPECT_TRUE(snap1.stack_valid);
+    EXPECT_TRUE(snap1.stack_words.size() >= 2u);
+    EXPECT_EQ(snap1.stack_words[0], 0x11223344u);
+    EXPECT_EQ(snap1.stack_words[1], 0x55667788u);
+
+    // 2. ESP in unmapped address: must not crash and mark stack invalid
+    session->cpu().context().SetGpr(cpu::Reg32::ESP, 0xD0000000);
+    auto snap2 = session->GetSnapshot();
+    EXPECT_FALSE(snap2.stack_valid);
+    EXPECT_TRUE(snap2.stack_words.empty());
+}
+
+TEST_CASE(TestMachineSessionDeterministicRunsAcrossSessions) {
+    auto run_once = []() {
+        auto s_res = MachineSession::Create(memory::kRamSizeRetail);
+        auto s = std::move(*s_res);
+        auto xbe = testing::CreateValidSyntheticXbe(0x55550001, "Det Test", 1);
+        // Code: ADD EAX, 5; ADD EBX, 10; HLT
+        xbe[0x1000] = 0x83;
+        xbe[0x1001] = 0xC0;
+        xbe[0x1002] = 0x05; // ADD EAX, 5
+        xbe[0x1003] = 0x83;
+        xbe[0x1004] = 0xC3;
+        xbe[0x1005] = 0x0A; // ADD EBX, 10
+        xbe[0x1006] = 0xF4; // HLT
+        MemoryByteSource src(xbe);
+        (void)s->Prepare(src);
+        ExecutionBudgets b{};
+        b.max_instructions = 100;
+        b.max_cycles = 1000;
+        (void)s->Start(b);
+        (void)s->WaitCompletion(2000);
+        return s->GetSnapshot();
+    };
+
+    auto snap1 = run_once();
+    auto snap2 = run_once();
+
+    EXPECT_EQ(snap1.instructions_executed, snap2.instructions_executed);
+    EXPECT_EQ(snap1.current_cycle, snap2.current_cycle);
+    EXPECT_EQ(snap1.cpu_context.GetGpr(cpu::Reg32::EAX), snap2.cpu_context.GetGpr(cpu::Reg32::EAX));
+    EXPECT_EQ(snap1.cpu_context.GetGpr(cpu::Reg32::EBX), snap2.cpu_context.GetGpr(cpu::Reg32::EBX));
+    EXPECT_EQ(snap1.cpu_context.eip, snap2.cpu_context.eip);
+    EXPECT_EQ(snap1.last_stop_reason.code, snap2.last_stop_reason.code);
+}
+
 int main() {
     return xblob::testing::RunAllTests();
 }

@@ -11,16 +11,25 @@
 #include "xblob/io/byte_source.hpp"
 #include "xblob/kernel/kernel_hle.hpp"
 #include "xblob/loader/xbe_loader.hpp"
+#include "xblob/machine/execution_types.hpp"
 #include "xblob/machine/gpu_interrupt_source.hpp"
+#include "xblob/machine/trace_buffer.hpp"
 #include "xblob/memory/address_space.hpp"
 #include "xblob/memory/ram.hpp"
 #include "xblob/pci/pci_bus_bridge.hpp"
 #include "xblob/pci/pci_registry.hpp"
 #include "xblob/vfs/vfs.hpp"
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
+#include <thread>
 
 namespace xblob::machine {
 
@@ -30,6 +39,7 @@ enum class MachineState : u8 {
     Paused = 2,
     Faulted = 3,
     Stopped = 4,
+    Running = 5,
 };
 
 [[nodiscard]] constexpr const char* ToString(MachineState state) noexcept {
@@ -44,6 +54,8 @@ enum class MachineState : u8 {
         return "Faulted";
     case MachineState::Stopped:
         return "Stopped";
+    case MachineState::Running:
+        return "Running";
     }
     return "Unknown";
 }
@@ -64,13 +76,13 @@ public:
     static Result<std::unique_ptr<MachineSession>>
     Create(std::size_t ram_size = memory::kRamSizeRetail);
 
-    ~MachineSession() = default;
+    ~MachineSession();
     MachineSession(const MachineSession&) = delete;
     MachineSession& operator=(const MachineSession&) = delete;
     MachineSession(MachineSession&&) = delete;
     MachineSession& operator=(MachineSession&&) = delete;
 
-    [[nodiscard]] MachineState state() const noexcept { return state_; }
+    [[nodiscard]] MachineState state() const noexcept;
     [[nodiscard]] const cpu::Cpu& cpu() const noexcept { return cpu_; }
     [[nodiscard]] cpu::Cpu& cpu() noexcept { return cpu_; }
     [[nodiscard]] const core::DeterministicScheduler& scheduler() const noexcept {
@@ -100,14 +112,26 @@ public:
     [[nodiscard]] const std::optional<loader::InitialContext>& initial_context() const noexcept {
         return initial_context_;
     }
-    [[nodiscard]] const std::optional<Error>& last_error() const noexcept { return last_error_; }
+    [[nodiscard]] const std::optional<Error>& last_error() const noexcept;
 
     Result<void> Prepare(const ByteSource& xbe_source);
     Result<void> PrepareMedia(std::shared_ptr<const ByteSource> media_source);
+
+    // Execution control
+    Result<void> Start(ExecutionBudgets budgets = {});
+    Result<void> Resume(ExecutionBudgets budgets = {});
     Result<MachineStepResult> Step(u64 instruction_budget = 1);
     Result<MachineStepResult> RunWithBudget(u64 max_instructions, u64 max_cycles);
     Result<void> Pause();
     Result<void> Stop();
+    Result<bool> WaitCompletion(u32 timeout_ms = 0);
+
+    [[nodiscard]] MachineSnapshot GetSnapshot() const;
+    [[nodiscard]] CompatibilityDiagnostic GetCompatibilityDiagnostic() const;
+    [[nodiscard]] StopReason last_stop_reason() const;
+
+    [[nodiscard]] TraceRingBuffer& trace_buffer() noexcept { return trace_buffer_; }
+    [[nodiscard]] const TraceRingBuffer& trace_buffer() const noexcept { return trace_buffer_; }
 
     [[nodiscard]] const std::shared_ptr<Vfs>& vfs() const noexcept { return vfs_; }
     [[nodiscard]] const std::shared_ptr<const ByteSource>& media_source() const noexcept {
@@ -126,6 +150,32 @@ public:
 
 private:
     explicit MachineSession(memory::Ram ram);
+
+    enum class CommandType { None, Start, Resume, Step, RunWithBudget, Pause, Stop };
+
+    struct MachineCommand {
+        CommandType type{CommandType::None};
+        ExecutionBudgets budgets{};
+        u64 step_instruction_budget{0};
+        u64 run_max_cycles{0};
+        std::promise<Result<MachineStepResult>>* promise{nullptr};
+    };
+
+    void WorkerLoop();
+    void ExecuteCommandLocked(MachineCommand& cmd, std::unique_lock<std::mutex>& lock);
+    void ExecuteRunningSliceLocked(std::unique_lock<std::mutex>& lock);
+    void PopulateFaultStopReasonLocked(const cpu::StepOutcome& outcome);
+    void RecordFirstBlockerLocked(const StopReason& reason);
+    [[nodiscard]] MachineSnapshot TakeSnapshotLocked() const;
+
+    mutable std::mutex mutex_;
+    std::condition_variable cv_cmd_;
+    std::condition_variable cv_done_;
+    std::thread worker_thread_;
+    std::deque<MachineCommand> command_queue_;
+    bool worker_exit_{false};
+    std::atomic<bool> pause_requested_{false};
+    std::atomic<bool> stop_requested_{false};
 
     MachineState state_{MachineState::Created};
     memory::Ram ram_;
@@ -146,6 +196,22 @@ private:
     std::optional<loader::XbeLoadPlan> load_plan_;
     std::optional<loader::InitialContext> initial_context_;
     std::optional<Error> last_error_;
+
+    // Execution state and metrics
+    ExecutionBudgets active_budgets_{};
+    u64 total_instructions_executed_{0};
+    u64 total_events_fired_{0};
+    u64 session_instructions_executed_{0};
+    Cycle session_cycles_consumed_{0};
+    std::chrono::steady_clock::time_point session_start_time_{};
+
+    StopReason last_stop_reason_{};
+    std::optional<StopReason> first_blocker_{std::nullopt};
+    u64 first_blocker_instructions_{0};
+    Cycle first_blocker_cycles_{0};
+
+    MachineSnapshot last_snapshot_{};
+    TraceRingBuffer trace_buffer_{1024};
 };
 
 } // namespace xblob::machine

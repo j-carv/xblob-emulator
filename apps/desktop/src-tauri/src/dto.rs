@@ -135,6 +135,80 @@ pub struct AppErrorDto {
     pub details: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionBudgetsDto {
+    pub max_instructions: Option<u64>,
+    pub max_cycles: Option<u64>,
+    pub max_wall_time_ms: Option<u64>,
+    pub max_events: Option<u64>,
+    pub chunk_instructions: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpuRegistersDto {
+    pub eax: u32,
+    pub eax_hex: String,
+    pub ecx: u32,
+    pub ecx_hex: String,
+    pub edx: u32,
+    pub edx_hex: String,
+    pub ebx: u32,
+    pub ebx_hex: String,
+    pub esp: u32,
+    pub esp_hex: String,
+    pub ebp: u32,
+    pub ebp_hex: String,
+    pub esi: u32,
+    pub esi_hex: String,
+    pub edi: u32,
+    pub edi_hex: String,
+    pub eip: u32,
+    pub eip_hex: String,
+    pub eflags: u32,
+    pub eflags_hex: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineSnapshotDto {
+    pub state: String,
+    pub stop_reason_code: String,
+    pub fault_eip: u32,
+    pub fault_eip_hex: String,
+    pub active_thread_id: u32,
+    pub thread_count: u32,
+    pub current_cycle: u64,
+    pub instructions_executed: u64,
+    pub events_fired: u64,
+    pub registers: CpuRegistersDto,
+    pub stack_valid: bool,
+    pub stack_words: Vec<u32>,
+    pub stack_words_hex: Vec<String>,
+    pub stop_reason_category: String,
+    pub stop_reason_symbol: String,
+    pub stop_reason_detail: String,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompatibilityDiagnosticDto {
+    pub first_blocker_code: String,
+    pub blocker_ordinal_or_opcode: u32,
+    pub blocker_ordinal_or_opcode_hex: String,
+    pub blocker_thread_id: u32,
+    pub blocker_eip: u32,
+    pub blocker_eip_hex: String,
+    pub blocker_count: u64,
+    pub blocker_category: String,
+    pub blocker_symbol_or_mnemonic: String,
+    pub blocker_detail: String,
+    pub total_instructions: u64,
+    pub total_cycles: u64,
+}
+
 impl std::fmt::Display for AppErrorDto {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.code, self.message)

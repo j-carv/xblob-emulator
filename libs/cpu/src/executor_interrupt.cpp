@@ -234,6 +234,34 @@ Result<ExecutionResult> Executor::Execute(const DecodedInstruction& inst, CpuCon
     case InstructionId::Xor:
     case InstructionId::Test:
         return detail::ExecuteAlu(inst, ctx, mem);
+    case InstructionId::Shl:
+    case InstructionId::Shr:
+    case InstructionId::Sar:
+    case InstructionId::Rol:
+    case InstructionId::Ror:
+        return detail::ExecuteShift(inst, ctx, mem);
+    case InstructionId::Mul:
+    case InstructionId::Imul:
+    case InstructionId::Div:
+    case InstructionId::Idiv:
+        return detail::ExecuteMulDiv(inst, ctx, mem, current_eip);
+    case InstructionId::Movzx:
+    case InstructionId::Movsx:
+    case InstructionId::Cdq:
+    case InstructionId::Bt:
+    case InstructionId::Setcc:
+        return detail::ExecuteBitExt(inst, ctx, mem);
+    case InstructionId::Movs:
+    case InstructionId::Stos:
+    case InstructionId::Lods:
+    case InstructionId::Cmps:
+    case InstructionId::Scas:
+    case InstructionId::Cld:
+    case InstructionId::Std:
+        return detail::ExecuteString(inst, ctx, mem, current_eip);
+    case InstructionId::Xchg:
+    case InstructionId::Cmpxchg:
+        return detail::ExecuteAtomic(inst, ctx, mem);
     case InstructionId::Jmp:
     case InstructionId::Jcc:
         return detail::ExecuteBranch(inst, ctx, mem, current_eip);

@@ -2,9 +2,16 @@ add_library(xblob_kernel STATIC
   src/registry.cpp
   src/debug_sink.cpp
   src/guest_heap.cpp
+  src/virtual_memory_hle.cpp
+  src/kernel_time.cpp
   src/sync_objects.cpp
   src/thread_scheduler.cpp
   src/file_services.cpp
+  src/handlers_memory.cpp
+  src/handlers_time.cpp
+  src/handlers_sync.cpp
+  src/handlers_thread.cpp
+  src/handlers_io.cpp
   src/kernel_hle.cpp
 )
 

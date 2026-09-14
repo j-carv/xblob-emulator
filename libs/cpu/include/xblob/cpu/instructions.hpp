@@ -104,6 +104,67 @@ inline constexpr u8 kSti = 0xFB;
 inline constexpr u8 kIret = 0xCF;
 inline constexpr u8 kIntImm8 = 0xCD;
 
+// Prefixes
+inline constexpr u8 kPrefixLock = 0xF0;
+inline constexpr u8 kPrefixRepne = 0xF2;
+inline constexpr u8 kPrefixRep = 0xF3;
+inline constexpr u8 kPrefixCs = 0x2E;
+inline constexpr u8 kPrefixSs = 0x36;
+inline constexpr u8 kPrefixDs = 0x3E;
+inline constexpr u8 kPrefixEs = 0x26;
+inline constexpr u8 kPrefixFs = 0x64;
+inline constexpr u8 kPrefixGs = 0x65;
+inline constexpr u8 kPrefixOpSize = 0x66;
+inline constexpr u8 kPrefixAddrSize = 0x67;
+
+// Shifts and rotates (Group 2)
+inline constexpr u8 kGroup2Imm8 = 0xC1;
+inline constexpr u8 kGroup2Imm8_8bit = 0xC0;
+inline constexpr u8 kGroup2One = 0xD1;
+inline constexpr u8 kGroup2One_8bit = 0xD0;
+inline constexpr u8 kGroup2Cl = 0xD3;
+inline constexpr u8 kGroup2Cl_8bit = 0xD2;
+
+// Multiply and divide (Group 3 + IMUL)
+inline constexpr u8 kGroup3Rm32 = 0xF7;
+inline constexpr u8 kGroup3Rm8 = 0xF6;
+inline constexpr u8 kImulRegRm32 = 0xAF; // after 0x0F
+inline constexpr u8 kImulRegRmImm32 = 0x69;
+inline constexpr u8 kImulRegRmImm8 = 0x6B;
+
+// Bit manipulation and extension
+inline constexpr u8 kCdq = 0x99;
+inline constexpr u8 kMovzxRm8 = 0xB6;  // after 0x0F
+inline constexpr u8 kMovzxRm16 = 0xB7; // after 0x0F
+inline constexpr u8 kMovsxRm8 = 0xBE;  // after 0x0F
+inline constexpr u8 kMovsxRm16 = 0xBF; // after 0x0F
+inline constexpr u8 kBtRmReg = 0xA3;   // after 0x0F
+inline constexpr u8 kBtGroup8 = 0xBA;  // after 0x0F (reg = 4)
+inline constexpr u8 kSetccBase = 0x90; // after 0x0F: 0x90..0x9F
+inline constexpr u8 kSetccEnd = 0x9F;
+
+// String operations and flags
+inline constexpr u8 kMovsb = 0xA4;
+inline constexpr u8 kMovsd = 0xA5;
+inline constexpr u8 kCmpsb = 0xA6;
+inline constexpr u8 kCmpsd = 0xA7;
+inline constexpr u8 kStosb = 0xAA;
+inline constexpr u8 kStosd = 0xAB;
+inline constexpr u8 kLodsb = 0xAC;
+inline constexpr u8 kLodsd = 0xAD;
+inline constexpr u8 kScasb = 0xAE;
+inline constexpr u8 kScasd = 0xAF;
+inline constexpr u8 kCld = 0xFC;
+inline constexpr u8 kStd = 0xFD;
+
+// Atomic and exchange
+inline constexpr u8 kXchgEaxRegBase = 0x90; // 0x90 + rd (0x90 is NOP)
+inline constexpr u8 kXchgEaxRegEnd = 0x97;
+inline constexpr u8 kXchgRmReg8 = 0x86;
+inline constexpr u8 kXchgRmReg32 = 0x87;
+inline constexpr u8 kCmpxchgRmReg8 = 0xB0;  // after 0x0F
+inline constexpr u8 kCmpxchgRmReg32 = 0xB1; // after 0x0F
+
 } // namespace opcodes
 
 namespace cycles {
@@ -142,6 +203,14 @@ inline constexpr Cycle kCli = 1;
 inline constexpr Cycle kSti = 1;
 inline constexpr Cycle kIret = 4;
 inline constexpr Cycle kInt = 4;
+
+inline constexpr Cycle kShiftReg = 1;
+inline constexpr Cycle kShiftMem = 2;
+inline constexpr Cycle kMul = 3;
+inline constexpr Cycle kDiv = 10;
+inline constexpr Cycle kBitExt = 1;
+inline constexpr Cycle kStringOp = 2;
+inline constexpr Cycle kAtomic = 2;
 } // namespace cycles
 
 } // namespace xblob::cpu

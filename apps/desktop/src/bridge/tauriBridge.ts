@@ -3,9 +3,12 @@ import { open } from '@tauri-apps/plugin-dialog';
 import {
   BootReport,
   BridgeApi,
+  CompatibilityDiagnostic,
   CoreInfo,
+  ExecutionBudgets,
   GpuFrameSnapshot,
   MachinePrepareDiagnostic,
+  MachineSnapshot,
   MediaReport,
   VfsDirectoryPage,
 } from './types';
@@ -65,5 +68,33 @@ export class TauriBridge implements BridgeApi {
       return selected;
     }
     return null;
+  }
+
+  async startTitleExecution(filePath: string, budgets?: ExecutionBudgets): Promise<MachineSnapshot> {
+    return await invoke<MachineSnapshot>('start_title_execution', { path: filePath, budgets });
+  }
+
+  async resumeTitleExecution(budgets?: ExecutionBudgets): Promise<MachineSnapshot> {
+    return await invoke<MachineSnapshot>('resume_title_execution', { budgets });
+  }
+
+  async pauseTitleExecution(): Promise<MachineSnapshot> {
+    return await invoke<MachineSnapshot>('pause_title_execution');
+  }
+
+  async stopTitleExecution(): Promise<MachineSnapshot> {
+    return await invoke<MachineSnapshot>('stop_title_execution');
+  }
+
+  async getExecutionSnapshot(): Promise<MachineSnapshot> {
+    return await invoke<MachineSnapshot>('get_execution_snapshot');
+  }
+
+  async getCompatibilityDiagnostic(): Promise<CompatibilityDiagnostic> {
+    return await invoke<CompatibilityDiagnostic>('get_compatibility_diagnostic');
+  }
+
+  async getExecutionTrace(): Promise<string> {
+    return await invoke<string>('get_execution_trace');
   }
 }

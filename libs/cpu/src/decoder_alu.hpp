@@ -9,7 +9,8 @@ namespace xblob::cpu::detail {
 
 template <typename MemoryType>
 Result<std::optional<DecodedInstruction>>
-TryDecodeAlu(u8 opcode, InstructionStream<MemoryType>& stream, const CpuContext& ctx) {
+TryDecodeAlu(u8 opcode, InstructionStream<MemoryType>& stream, const CpuContext& ctx,
+             std::optional<UnsupportedFormInfo>* out_unsupported = nullptr) {
     DecodedInstruction inst;
 
     auto parse_two_op = [&](InstructionId id, bool is_rm_reg,
@@ -112,23 +113,66 @@ TryDecodeAlu(u8 opcode, InstructionStream<MemoryType>& stream, const CpuContext&
     if (opcode == opcodes::kTestEaxImm32)
         return parse_two_op(InstructionId::Test, false, true);
 
-    // Group 3 TEST r/m32, imm32 (0xF7 /0)
-    if (opcode == opcodes::kTestRmImm32Group3) {
-        auto modrm_res = ParseModRm(stream, ctx);
+    // Group 3 TEST, MUL, IMUL, DIV, IDIV (0xF7 / 0xF6)
+    if (opcode == opcodes::kGroup3Rm32 || opcode == opcodes::kGroup3Rm8) {
+        const bool is_8bit = (opcode == opcodes::kGroup3Rm8);
+        const u8 size_bytes = is_8bit ? 1 : 4;
+        auto modrm_res = ParseModRm(stream, ctx, size_bytes);
         if (!modrm_res)
             return modrm_res.error();
-        if (modrm_res->second != 0) {
-            return Error{ErrorCode::InvalidOpcode, "Opcode 0xF7 com reg != 0"};
-        }
-        auto imm_res = stream.ReadImm32();
-        if (!imm_res)
-            return imm_res.error();
-        inst.id = InstructionId::Test;
+        const u8 reg_op = modrm_res->second;
         inst.op1 = modrm_res->first;
-        inst.op2 = Operand::MakeImm(*imm_res);
-        inst.cycles = (inst.op1.kind == OperandKind::Memory) ? cycles::kAluMem : cycles::kAluRegImm;
-        inst.length = stream.length();
-        return std::optional<DecodedInstruction>(inst);
+        inst.data_size = size_bytes;
+
+        if (reg_op == 0) { // TEST r/m, imm
+            if (is_8bit) {
+                auto imm_res = stream.NextByte();
+                if (!imm_res)
+                    return imm_res.error();
+                inst.id = InstructionId::Test;
+                inst.op2 = Operand::MakeImm(*imm_res, 1);
+            } else {
+                auto imm_res = stream.ReadImm32();
+                if (!imm_res)
+                    return imm_res.error();
+                inst.id = InstructionId::Test;
+                inst.op2 = Operand::MakeImm(*imm_res, 4);
+            }
+            inst.cycles =
+                (inst.op1.kind == OperandKind::Memory) ? cycles::kAluMem : cycles::kAluRegImm;
+            inst.length = stream.length();
+            return std::optional<DecodedInstruction>(inst);
+        }
+        if (reg_op == 4) {
+            inst.id = InstructionId::Mul;
+            inst.cycles = cycles::kMul;
+            inst.length = stream.length();
+            return std::optional<DecodedInstruction>(inst);
+        }
+        if (reg_op == 5) {
+            inst.id = InstructionId::Imul;
+            inst.cycles = cycles::kMul;
+            inst.length = stream.length();
+            return std::optional<DecodedInstruction>(inst);
+        }
+        if (reg_op == 6) {
+            inst.id = InstructionId::Div;
+            inst.cycles = cycles::kDiv;
+            inst.length = stream.length();
+            return std::optional<DecodedInstruction>(inst);
+        }
+        if (reg_op == 7) {
+            inst.id = InstructionId::Idiv;
+            inst.cycles = cycles::kDiv;
+            inst.length = stream.length();
+            return std::optional<DecodedInstruction>(inst);
+        }
+
+        std::string reason = "Group 3 opcode 0xF7/F6 unsupported reg=" + std::to_string(reg_op);
+        if (out_unsupported != nullptr) {
+            *out_unsupported = UnsupportedFormInfo{stream.start_eip(), stream.raw_bytes(), reason};
+        }
+        return Error{ErrorCode::UnsupportedFeature, reason, stream.start_eip()};
     }
 
     // Group 1: 0x81 (imm32) and 0x83 (imm8 sign-extended)

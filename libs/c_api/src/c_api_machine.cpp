@@ -289,4 +289,195 @@ xblob_status_t xblob_machine_copy_frame_pixels(const struct xblob_machine_s* mac
     return XBLOB_STATUS_OK;
 }
 
+static xblob_stop_reason_code_t map_stop_reason_code(xblob::machine::StopReasonCode c) {
+    switch (c) {
+    case xblob::machine::StopReasonCode::None:
+        return XBLOB_STOP_REASON_NONE;
+    case xblob::machine::StopReasonCode::Paused:
+        return XBLOB_STOP_REASON_PAUSED;
+    case xblob::machine::StopReasonCode::StepCompleted:
+        return XBLOB_STOP_REASON_STEP_COMPLETED;
+    case xblob::machine::StopReasonCode::Halted:
+        return XBLOB_STOP_REASON_HALTED;
+    case xblob::machine::StopReasonCode::BudgetInstructionsExhausted:
+        return XBLOB_STOP_REASON_BUDGET_INSTRUCTIONS;
+    case xblob::machine::StopReasonCode::BudgetCyclesExhausted:
+        return XBLOB_STOP_REASON_BUDGET_CYCLES;
+    case xblob::machine::StopReasonCode::BudgetWallTimeExhausted:
+        return XBLOB_STOP_REASON_BUDGET_WALL_TIME;
+    case xblob::machine::StopReasonCode::BudgetEventsExhausted:
+        return XBLOB_STOP_REASON_BUDGET_EVENTS;
+    case xblob::machine::StopReasonCode::WatchdogTimeout:
+        return XBLOB_STOP_REASON_WATCHDOG_TIMEOUT;
+    case xblob::machine::StopReasonCode::UnsupportedOpcode:
+        return XBLOB_STOP_REASON_UNSUPPORTED_OPCODE;
+    case xblob::machine::StopReasonCode::UnsupportedExport:
+        return XBLOB_STOP_REASON_UNSUPPORTED_EXPORT;
+    case xblob::machine::StopReasonCode::UnsupportedGpuMethod:
+        return XBLOB_STOP_REASON_UNSUPPORTED_GPU_METHOD;
+    case xblob::machine::StopReasonCode::UnsupportedFileService:
+        return XBLOB_STOP_REASON_UNSUPPORTED_FILE_SERVICE;
+    case xblob::machine::StopReasonCode::CpuException:
+        return XBLOB_STOP_REASON_CPU_EXCEPTION;
+    case xblob::machine::StopReasonCode::MemoryFault:
+        return XBLOB_STOP_REASON_MEMORY_FAULT;
+    case xblob::machine::StopReasonCode::InternalError:
+    default:
+        return XBLOB_STOP_REASON_INTERNAL_ERROR;
+    }
+}
+
+xblob_status_t xblob_machine_start_execution(xblob_machine_t machine,
+                                             const xblob_execution_budgets_t* budgets) {
+    if (!machine) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    xblob::machine::ExecutionBudgets b{};
+    if (budgets) {
+        if (budgets->struct_size < sizeof(uint32_t)) {
+            return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+        }
+        b.max_instructions = budgets->max_instructions;
+        b.max_cycles = budgets->max_cycles;
+        b.max_wall_time_ms = budgets->max_wall_time_ms;
+        b.max_events = budgets->max_events;
+        b.chunk_instructions = budgets->chunk_instructions;
+    }
+    auto start_res = machine->session->Start(b);
+    if (!start_res) {
+        return xblob::c_api_internal::map_error_to_status(start_res.error().code);
+    }
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_resume_execution(xblob_machine_t machine,
+                                              const xblob_execution_budgets_t* budgets) {
+    if (!machine) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    xblob::machine::ExecutionBudgets b{};
+    if (budgets) {
+        if (budgets->struct_size < sizeof(uint32_t)) {
+            return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+        }
+        b.max_instructions = budgets->max_instructions;
+        b.max_cycles = budgets->max_cycles;
+        b.max_wall_time_ms = budgets->max_wall_time_ms;
+        b.max_events = budgets->max_events;
+        b.chunk_instructions = budgets->chunk_instructions;
+    }
+    auto resume_res = machine->session->Resume(b);
+    if (!resume_res) {
+        return xblob::c_api_internal::map_error_to_status(resume_res.error().code);
+    }
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_wait_completion(xblob_machine_t machine, uint32_t timeout_ms,
+                                             int* out_completed) {
+    if (!machine || !out_completed) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    auto wait_res = machine->session->WaitCompletion(timeout_ms);
+    if (!wait_res) {
+        return xblob::c_api_internal::map_error_to_status(wait_res.error().code);
+    }
+    *out_completed = *wait_res ? 1 : 0;
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_get_snapshot(const struct xblob_machine_s* machine,
+                                          xblob_machine_snapshot_t* out_snapshot) {
+    if (!machine || !out_snapshot) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    if (out_snapshot->struct_size < sizeof(uint32_t)) {
+        return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+    }
+
+    const auto snap = machine->session->GetSnapshot();
+    xblob_machine_snapshot_t full{};
+    full.struct_size = sizeof(xblob_machine_snapshot_t);
+    full.state = static_cast<xblob_machine_state_t>(snap.state_val);
+    full.stop_reason_code = map_stop_reason_code(snap.last_stop_reason.code);
+    full.fault_eip = snap.last_stop_reason.fault_eip;
+    full.active_thread_id = snap.active_thread_id;
+    full.thread_count = snap.thread_count;
+    full.current_cycle = snap.current_cycle;
+    full.instructions_executed = snap.instructions_executed;
+    full.events_fired = snap.events_fired;
+
+    full.registers.struct_size = sizeof(xblob_cpu_registers_snapshot_t);
+    full.registers.eax = snap.cpu_context.GetGpr(xblob::cpu::Reg32::EAX);
+    full.registers.ecx = snap.cpu_context.GetGpr(xblob::cpu::Reg32::ECX);
+    full.registers.edx = snap.cpu_context.GetGpr(xblob::cpu::Reg32::EDX);
+    full.registers.ebx = snap.cpu_context.GetGpr(xblob::cpu::Reg32::EBX);
+    full.registers.esp = snap.cpu_context.GetGpr(xblob::cpu::Reg32::ESP);
+    full.registers.ebp = snap.cpu_context.GetGpr(xblob::cpu::Reg32::EBP);
+    full.registers.esi = snap.cpu_context.GetGpr(xblob::cpu::Reg32::ESI);
+    full.registers.edi = snap.cpu_context.GetGpr(xblob::cpu::Reg32::EDI);
+    full.registers.eip = snap.cpu_context.eip;
+    full.registers.eflags = snap.eflags_raw;
+
+    full.stack_valid = snap.stack_valid ? 1 : 0;
+    for (std::size_t i = 0; i < snap.stack_words.size() && i < 8; ++i) {
+        full.stack_words[i] = snap.stack_words[i];
+    }
+
+    std::strncpy(full.stop_reason_category, snap.last_stop_reason.category.c_str(),
+                 sizeof(full.stop_reason_category) - 1);
+    std::strncpy(full.stop_reason_symbol, snap.last_stop_reason.symbol_or_mnemonic.c_str(),
+                 sizeof(full.stop_reason_symbol) - 1);
+    std::strncpy(full.stop_reason_detail, snap.last_stop_reason.detail.c_str(),
+                 sizeof(full.stop_reason_detail) - 1);
+    std::strncpy(full.error_message, snap.error_message.c_str(), sizeof(full.error_message) - 1);
+
+    const size_t copy_size =
+        std::min(static_cast<size_t>(out_snapshot->struct_size), sizeof(xblob_machine_snapshot_t));
+    std::memcpy(out_snapshot, &full, copy_size);
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t
+xblob_machine_get_compatibility_diagnostic(const struct xblob_machine_s* machine,
+                                           xblob_compatibility_diagnostic_t* out_diagnostic) {
+    if (!machine || !out_diagnostic) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    if (out_diagnostic->struct_size < sizeof(uint32_t)) {
+        return XBLOB_STATUS_ERROR_INCOMPATIBLE_VERSION;
+    }
+
+    const auto diag = machine->session->GetCompatibilityDiagnostic();
+    xblob_compatibility_diagnostic_t full{};
+    full.struct_size = sizeof(xblob_compatibility_diagnostic_t);
+    full.first_blocker_code = map_stop_reason_code(diag.first_blocker.code);
+    full.blocker_ordinal_or_opcode = diag.first_blocker.ordinal_or_opcode;
+    full.blocker_thread_id = diag.first_blocker.thread_id;
+    full.blocker_eip = diag.first_blocker.fault_eip;
+    full.blocker_count = diag.first_blocker.count;
+    std::strncpy(full.blocker_category, diag.first_blocker.category.c_str(),
+                 sizeof(full.blocker_category) - 1);
+    std::strncpy(full.blocker_symbol_or_mnemonic, diag.first_blocker.symbol_or_mnemonic.c_str(),
+                 sizeof(full.blocker_symbol_or_mnemonic) - 1);
+    std::strncpy(full.blocker_detail, diag.first_blocker.detail.c_str(),
+                 sizeof(full.blocker_detail) - 1);
+    full.total_instructions = diag.total_instructions;
+    full.total_cycles = diag.total_cycles;
+
+    const size_t copy_size = std::min(static_cast<size_t>(out_diagnostic->struct_size),
+                                      sizeof(xblob_compatibility_diagnostic_t));
+    std::memcpy(out_diagnostic, &full, copy_size);
+    return XBLOB_STATUS_OK;
+}
+
+xblob_status_t xblob_machine_get_trace_text(const struct xblob_machine_s* machine, char* buffer,
+                                            size_t* inout_buffer_size) {
+    if (!machine || !inout_buffer_size) {
+        return XBLOB_STATUS_ERROR_NULL_POINTER;
+    }
+    const std::string text = machine->session->trace_buffer().FormatText();
+    return xblob::c_api_internal::copy_string_to_two_call_buffer(text, buffer, inout_buffer_size);
+}
+
 } // extern "C"

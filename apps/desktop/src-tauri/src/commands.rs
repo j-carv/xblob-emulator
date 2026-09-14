@@ -110,9 +110,148 @@ fn machine_state_to_string(state: XblobMachineState) -> &'static str {
         XBLOB_MACHINE_STATE_PAUSED => "Paused",
         XBLOB_MACHINE_STATE_FAULTED => "Faulted",
         XBLOB_MACHINE_STATE_STOPPED => "Stopped",
+        XBLOB_MACHINE_STATE_RUNNING => "Running",
         _ => "Unknown",
     }
 }
+
+fn stop_reason_code_to_string(code: XblobStopReasonCode) -> &'static str {
+    match code {
+        XBLOB_STOP_REASON_NONE => "None",
+        XBLOB_STOP_REASON_PAUSED => "Paused",
+        XBLOB_STOP_REASON_STEP_COMPLETED => "StepCompleted",
+        XBLOB_STOP_REASON_HALTED => "Halted",
+        XBLOB_STOP_REASON_BUDGET_INSTRUCTIONS => "BudgetInstructions",
+        XBLOB_STOP_REASON_BUDGET_CYCLES => "BudgetCycles",
+        XBLOB_STOP_REASON_BUDGET_WALL_TIME => "BudgetWallTime",
+        XBLOB_STOP_REASON_BUDGET_EVENTS => "BudgetEvents",
+        XBLOB_STOP_REASON_WATCHDOG_TIMEOUT => "WatchdogTimeout",
+        XBLOB_STOP_REASON_UNSUPPORTED_OPCODE => "UnsupportedOpcode",
+        XBLOB_STOP_REASON_UNSUPPORTED_EXPORT => "UnsupportedExport",
+        XBLOB_STOP_REASON_UNSUPPORTED_GPU_METHOD => "UnsupportedGpuMethod",
+        XBLOB_STOP_REASON_UNSUPPORTED_FILE_SERVICE => "UnsupportedFileService",
+        XBLOB_STOP_REASON_CPU_EXCEPTION => "CpuException",
+        XBLOB_STOP_REASON_MEMORY_FAULT => "MemoryFault",
+        XBLOB_STOP_REASON_INTERNAL_ERROR => "InternalError",
+        _ => "Unknown",
+    }
+}
+
+fn raw_snapshot_to_dto(snap: &XblobMachineSnapshot) -> MachineSnapshotDto {
+    let err_msg = unsafe { std::ffi::CStr::from_ptr(snap.error_message.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    let cat = unsafe { std::ffi::CStr::from_ptr(snap.stop_reason_category.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    let sym = unsafe { std::ffi::CStr::from_ptr(snap.stop_reason_symbol.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    let det = unsafe { std::ffi::CStr::from_ptr(snap.stop_reason_detail.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+
+    let mut stack_words = Vec::new();
+    let mut stack_words_hex = Vec::new();
+    if snap.stack_valid != 0 {
+        for &w in &snap.stack_words {
+            stack_words.push(w);
+            stack_words_hex.push(format!("0x{:08X}", w));
+        }
+    }
+
+    MachineSnapshotDto {
+        state: machine_state_to_string(snap.state).to_string(),
+        stop_reason_code: stop_reason_code_to_string(snap.stop_reason_code).to_string(),
+        fault_eip: snap.fault_eip,
+        fault_eip_hex: format!("0x{:08X}", snap.fault_eip),
+        active_thread_id: snap.active_thread_id,
+        thread_count: snap.thread_count,
+        current_cycle: snap.current_cycle,
+        instructions_executed: snap.instructions_executed,
+        events_fired: snap.events_fired,
+        registers: CpuRegistersDto {
+            eax: snap.registers.eax,
+            eax_hex: format!("0x{:08X}", snap.registers.eax),
+            ecx: snap.registers.ecx,
+            ecx_hex: format!("0x{:08X}", snap.registers.ecx),
+            edx: snap.registers.edx,
+            edx_hex: format!("0x{:08X}", snap.registers.edx),
+            ebx: snap.registers.ebx,
+            ebx_hex: format!("0x{:08X}", snap.registers.ebx),
+            esp: snap.registers.esp,
+            esp_hex: format!("0x{:08X}", snap.registers.esp),
+            ebp: snap.registers.ebp,
+            ebp_hex: format!("0x{:08X}", snap.registers.ebp),
+            esi: snap.registers.esi,
+            esi_hex: format!("0x{:08X}", snap.registers.esi),
+            edi: snap.registers.edi,
+            edi_hex: format!("0x{:08X}", snap.registers.edi),
+            eip: snap.registers.eip,
+            eip_hex: format!("0x{:08X}", snap.registers.eip),
+            eflags: snap.registers.eflags,
+            eflags_hex: format!("0x{:08X}", snap.registers.eflags),
+        },
+        stack_valid: snap.stack_valid != 0,
+        stack_words,
+        stack_words_hex,
+        stop_reason_category: cat,
+        stop_reason_symbol: sym,
+        stop_reason_detail: det,
+        error_message: if err_msg.is_empty() {
+            None
+        } else {
+            Some(err_msg)
+        },
+    }
+}
+
+fn raw_diagnostic_to_dto(diag: &XblobCompatibilityDiagnostic) -> CompatibilityDiagnosticDto {
+    let cat = unsafe { std::ffi::CStr::from_ptr(diag.blocker_category.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    let sym = unsafe { std::ffi::CStr::from_ptr(diag.blocker_symbol_or_mnemonic.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    let det = unsafe { std::ffi::CStr::from_ptr(diag.blocker_detail.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+
+    CompatibilityDiagnosticDto {
+        first_blocker_code: stop_reason_code_to_string(diag.first_blocker_code).to_string(),
+        blocker_ordinal_or_opcode: diag.blocker_ordinal_or_opcode,
+        blocker_ordinal_or_opcode_hex: format!("0x{:08X}", diag.blocker_ordinal_or_opcode),
+        blocker_thread_id: diag.blocker_thread_id,
+        blocker_eip: diag.blocker_eip,
+        blocker_eip_hex: format!("0x{:08X}", diag.blocker_eip),
+        blocker_count: diag.blocker_count,
+        blocker_category: cat,
+        blocker_symbol_or_mnemonic: sym,
+        blocker_detail: det,
+        total_instructions: diag.total_instructions,
+        total_cycles: diag.total_cycles,
+    }
+}
+
+fn dto_to_budgets(dto: Option<ExecutionBudgetsDto>) -> XblobExecutionBudgets {
+    let d = dto.unwrap_or(ExecutionBudgetsDto {
+        max_instructions: Some(10_000_000),
+        max_cycles: Some(100_000_000),
+        max_wall_time_ms: Some(5_000),
+        max_events: Some(1_000_000),
+        chunk_instructions: Some(1_000),
+    });
+    XblobExecutionBudgets {
+        struct_size: std::mem::size_of::<XblobExecutionBudgets>() as u32,
+        max_instructions: d.max_instructions.unwrap_or(10_000_000),
+        max_cycles: d.max_cycles.unwrap_or(100_000_000),
+        max_wall_time_ms: d.max_wall_time_ms.unwrap_or(5_000),
+        max_events: d.max_events.unwrap_or(1_000_000),
+        chunk_instructions: d.chunk_instructions.unwrap_or(1_000),
+    }
+}
+
+static ACTIVE_SESSION: std::sync::Mutex<Option<SafeMachineSession>> = std::sync::Mutex::new(None);
 
 #[tauri::command]
 pub fn prepare_machine_diagnostic(
@@ -342,4 +481,238 @@ pub async fn browse_media_vfs(
         message: e.to_string(),
         details: None,
     })?
+}
+
+#[tauri::command]
+pub async fn start_title_execution(
+    path: String,
+    budgets: Option<ExecutionBudgetsDto>,
+) -> Result<MachineSnapshotDto, AppErrorDto> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut session = SafeMachineSession::new().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        // Try prepare_media first (for ISO/XISO/XBE), fallback to prepare_xbe
+        if session.prepare_media(&path).is_err() {
+            session.prepare_xbe(&path).map_err(|e| AppErrorDto {
+                code: e.code().to_string(),
+                message: e.to_string(),
+                details: None,
+            })?;
+        }
+
+        let b = dto_to_budgets(budgets);
+        session.start_execution(Some(b)).map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        let timeout = (b.max_wall_time_ms as u32).saturating_add(500);
+        let _ = session.wait_completion(timeout);
+
+        let snap = session.get_snapshot().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        let mut lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+            code: "LOCK_ERROR".to_string(),
+            message: "Falha ao adquirir lock de sessão".to_string(),
+            details: None,
+        })?;
+        *lock = Some(session);
+
+        Ok(raw_snapshot_to_dto(&snap))
+    })
+    .await
+    .map_err(|e| AppErrorDto {
+        code: "INTERNAL_ERROR".to_string(),
+        message: e.to_string(),
+        details: None,
+    })?
+}
+
+#[tauri::command]
+pub async fn resume_title_execution(
+    budgets: Option<ExecutionBudgetsDto>,
+) -> Result<MachineSnapshotDto, AppErrorDto> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+            code: "LOCK_ERROR".to_string(),
+            message: "Falha ao adquirir lock de sessão".to_string(),
+            details: None,
+        })?;
+        let session = lock.as_mut().ok_or_else(|| AppErrorDto {
+            code: "NO_ACTIVE_SESSION".to_string(),
+            message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+            details: None,
+        })?;
+
+        let b = dto_to_budgets(budgets);
+        session.resume_execution(Some(b)).map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        let timeout = (b.max_wall_time_ms as u32).saturating_add(500);
+        let _ = session.wait_completion(timeout);
+
+        let snap = session.get_snapshot().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        Ok(raw_snapshot_to_dto(&snap))
+    })
+    .await
+    .map_err(|e| AppErrorDto {
+        code: "INTERNAL_ERROR".to_string(),
+        message: e.to_string(),
+        details: None,
+    })?
+}
+
+#[tauri::command]
+pub async fn pause_title_execution() -> Result<MachineSnapshotDto, AppErrorDto> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+            code: "LOCK_ERROR".to_string(),
+            message: "Falha ao adquirir lock de sessão".to_string(),
+            details: None,
+        })?;
+        let session = lock.as_mut().ok_or_else(|| AppErrorDto {
+            code: "NO_ACTIVE_SESSION".to_string(),
+            message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+            details: None,
+        })?;
+
+        session.pause().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        let snap = session.get_snapshot().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        Ok(raw_snapshot_to_dto(&snap))
+    })
+    .await
+    .map_err(|e| AppErrorDto {
+        code: "INTERNAL_ERROR".to_string(),
+        message: e.to_string(),
+        details: None,
+    })?
+}
+
+#[tauri::command]
+pub async fn stop_title_execution() -> Result<MachineSnapshotDto, AppErrorDto> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+            code: "LOCK_ERROR".to_string(),
+            message: "Falha ao adquirir lock de sessão".to_string(),
+            details: None,
+        })?;
+        let session = lock.as_mut().ok_or_else(|| AppErrorDto {
+            code: "NO_ACTIVE_SESSION".to_string(),
+            message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+            details: None,
+        })?;
+
+        session.stop().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        let snap = session.get_snapshot().map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+        Ok(raw_snapshot_to_dto(&snap))
+    })
+    .await
+    .map_err(|e| AppErrorDto {
+        code: "INTERNAL_ERROR".to_string(),
+        message: e.to_string(),
+        details: None,
+    })?
+}
+
+#[tauri::command]
+pub fn get_execution_snapshot() -> Result<MachineSnapshotDto, AppErrorDto> {
+    let lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+        code: "LOCK_ERROR".to_string(),
+        message: "Falha ao adquirir lock de sessão".to_string(),
+        details: None,
+    })?;
+    let session = lock.as_ref().ok_or_else(|| AppErrorDto {
+        code: "NO_ACTIVE_SESSION".to_string(),
+        message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+        details: None,
+    })?;
+
+    let snap = session.get_snapshot().map_err(|e| AppErrorDto {
+        code: e.code().to_string(),
+        message: e.to_string(),
+        details: None,
+    })?;
+
+    Ok(raw_snapshot_to_dto(&snap))
+}
+
+#[tauri::command]
+pub fn get_compatibility_diagnostic() -> Result<CompatibilityDiagnosticDto, AppErrorDto> {
+    let lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+        code: "LOCK_ERROR".to_string(),
+        message: "Falha ao adquirir lock de sessão".to_string(),
+        details: None,
+    })?;
+    let session = lock.as_ref().ok_or_else(|| AppErrorDto {
+        code: "NO_ACTIVE_SESSION".to_string(),
+        message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+        details: None,
+    })?;
+
+    let diag = session
+        .get_compatibility_diagnostic()
+        .map_err(|e| AppErrorDto {
+            code: e.code().to_string(),
+            message: e.to_string(),
+            details: None,
+        })?;
+
+    Ok(raw_diagnostic_to_dto(&diag))
+}
+
+#[tauri::command]
+pub fn get_execution_trace() -> Result<String, AppErrorDto> {
+    let lock = ACTIVE_SESSION.lock().map_err(|_| AppErrorDto {
+        code: "LOCK_ERROR".to_string(),
+        message: "Falha ao adquirir lock de sessão".to_string(),
+        details: None,
+    })?;
+    let session = lock.as_ref().ok_or_else(|| AppErrorDto {
+        code: "NO_ACTIVE_SESSION".to_string(),
+        message: "Nenhuma sessão de máquina ativa encontrada".to_string(),
+        details: None,
+    })?;
+
+    session.get_trace_text().map_err(|e| AppErrorDto {
+        code: e.code().to_string(),
+        message: e.to_string(),
+        details: None,
+    })
 }

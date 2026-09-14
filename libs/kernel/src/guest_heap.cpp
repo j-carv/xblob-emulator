@@ -75,6 +75,93 @@ Result<void> GuestHeap::Free(GuestAddr addr) {
     return Result<void>::Ok();
 }
 
+Result<GuestAddr> GuestHeap::AllocateAligned(std::size_t size_bytes, std::size_t alignment) {
+    if (size_bytes == 0) {
+        return Error{ErrorCode::InvalidArgument, "Tamanho de alocação não pode ser zero"};
+    }
+    if (alignment < 4 || (alignment & (alignment - 1)) != 0) {
+        return Error{ErrorCode::InvalidArgument, "Alinhamento deve ser potência de 2 e >= 4"};
+    }
+
+    std::size_t effective_align = std::max(alignment_, alignment);
+    std::size_t aligned_size = (size_bytes + (effective_align - 1)) & ~(effective_align - 1);
+
+    for (auto it = free_blocks_.begin(); it != free_blocks_.end(); ++it) {
+        GuestAddr candidate =
+            static_cast<GuestAddr>((it->addr + (effective_align - 1)) & ~(effective_align - 1));
+        std::size_t padding = candidate - it->addr;
+        if (it->size >= padding + aligned_size) {
+            std::size_t total_consumed = padding + aligned_size;
+            std::size_t remaining = it->size - total_consumed;
+
+            if (padding > 0) {
+                // Keep the prefix before candidate
+                it->size = padding;
+                if (remaining >= alignment_) {
+                    FreeBlock suffix{candidate + static_cast<GuestAddr>(aligned_size), remaining};
+                    free_blocks_.insert(it + 1, suffix);
+                }
+            } else {
+                if (remaining >= alignment_) {
+                    it->addr += aligned_size;
+                    it->size = remaining;
+                } else {
+                    aligned_size = it->size;
+                    free_blocks_.erase(it);
+                }
+            }
+
+            active_allocations_[candidate] = aligned_size;
+            allocated_bytes_ += aligned_size;
+            return candidate;
+        }
+    }
+
+    return Error{ErrorCode::LimitReached, "Memória do heap esgotada para alinhamento"};
+}
+
+Result<GuestAddr> GuestHeap::ReAllocate(GuestAddr addr, std::size_t new_size,
+                                        memory::AddressSpace* mem) {
+    auto it = active_allocations_.find(addr);
+    if (it == active_allocations_.end()) {
+        return Error{ErrorCode::InvalidArgument, "Endereço não alocado para realocação"};
+    }
+
+    std::size_t old_size = it->second;
+    if (new_size == 0) {
+        auto free_res = Free(addr);
+        if (!free_res)
+            return free_res.error();
+        return 0;
+    }
+
+    auto new_addr_res = Allocate(new_size);
+    if (!new_addr_res) {
+        return new_addr_res.error();
+    }
+
+    GuestAddr new_addr = *new_addr_res;
+    if (mem != nullptr && new_addr != addr) {
+        std::size_t copy_size = std::min(old_size, new_size);
+        std::vector<u8> buffer(copy_size);
+        auto read_res = mem->ReadBytes(addr, buffer);
+        if (read_res.has_value()) {
+            (void)mem->WriteBytes(new_addr, buffer);
+        }
+    }
+
+    (void)Free(addr);
+    return new_addr;
+}
+
+Result<std::size_t> GuestHeap::GetBlockSize(GuestAddr addr) const {
+    auto it = active_allocations_.find(addr);
+    if (it == active_allocations_.end()) {
+        return Error{ErrorCode::InvalidArgument, "Endereço não alocado"};
+    }
+    return it->second;
+}
+
 void GuestHeap::Coalesce() {
     if (free_blocks_.size() <= 1)
         return;
@@ -94,6 +181,50 @@ void GuestHeap::Coalesce() {
     }
 
     free_blocks_ = std::move(merged);
+}
+
+GuestHeapManager::GuestHeapManager(GuestAddr default_base, std::size_t default_size)
+    : default_heap_(default_base, default_size, 8) {}
+
+void GuestHeapManager::Reset() {
+    default_heap_.Reset();
+    secondary_heaps_.clear();
+    next_secondary_base_ = 0x20000000;
+}
+
+Result<u32> GuestHeapManager::CreateHeap(GuestAddr base, std::size_t size, std::size_t alignment) {
+    GuestAddr target_base = base;
+    if (target_base == 0) {
+        target_base = next_secondary_base_;
+        next_secondary_base_ += static_cast<u32>((size + 0xFFFFULL) & ~0xFFFFULL);
+    }
+    auto heap = std::make_unique<GuestHeap>(target_base, size, alignment);
+    u32 handle = static_cast<u32>(target_base);
+    secondary_heaps_[handle] = std::move(heap);
+    return handle;
+}
+
+Result<void> GuestHeapManager::DestroyHeap(u32 heap_handle) {
+    if (heap_handle == default_heap_.base_addr()) {
+        return Error{ErrorCode::InvalidArgument, "Não é permitido destruir o heap padrão"};
+    }
+    auto it = secondary_heaps_.find(heap_handle);
+    if (it == secondary_heaps_.end()) {
+        return Error{ErrorCode::InvalidArgument, "Handle de heap inexistente"};
+    }
+    secondary_heaps_.erase(it);
+    return Result<void>::Ok();
+}
+
+Result<GuestHeap*> GuestHeapManager::GetHeap(u32 heap_handle) {
+    if (heap_handle == 0 || heap_handle == default_heap_.base_addr()) {
+        return &default_heap_;
+    }
+    auto it = secondary_heaps_.find(heap_handle);
+    if (it != secondary_heaps_.end()) {
+        return it->second.get();
+    }
+    return Error{ErrorCode::InvalidArgument, "Handle de heap inválido"};
 }
 
 } // namespace xblob::kernel

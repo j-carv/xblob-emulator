@@ -412,7 +412,170 @@ impl SafeMachineSession {
 
         Ok(report)
     }
+
+    pub fn start_execution(
+        &mut self,
+        budgets: Option<XblobExecutionBudgets>,
+    ) -> Result<(), FfiError> {
+        let status = unsafe {
+            match budgets {
+                Some(b) => xblob_machine_start_execution(self.handle, &b),
+                None => xblob_machine_start_execution(self.handle, ptr::null()),
+            }
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(())
+    }
+
+    pub fn resume_execution(
+        &mut self,
+        budgets: Option<XblobExecutionBudgets>,
+    ) -> Result<(), FfiError> {
+        let status = unsafe {
+            match budgets {
+                Some(b) => xblob_machine_resume_execution(self.handle, &b),
+                None => xblob_machine_resume_execution(self.handle, ptr::null()),
+            }
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(())
+    }
+
+    pub fn pause(&mut self) -> Result<(), FfiError> {
+        let status = unsafe { xblob_machine_pause(self.handle) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(())
+    }
+
+    pub fn stop(&mut self) -> Result<(), FfiError> {
+        let status = unsafe { xblob_machine_stop(self.handle) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(())
+    }
+
+    pub fn wait_completion(&mut self, timeout_ms: u32) -> Result<bool, FfiError> {
+        let mut completed: i32 = 0;
+        let status =
+            unsafe { xblob_machine_wait_completion(self.handle, timeout_ms, &mut completed) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(completed != 0)
+    }
+
+    pub fn get_snapshot(&self) -> Result<XblobMachineSnapshot, FfiError> {
+        let mut snap = XblobMachineSnapshot {
+            struct_size: std::mem::size_of::<XblobMachineSnapshot>() as u32,
+            state: XBLOB_MACHINE_STATE_CREATED,
+            stop_reason_code: XBLOB_STOP_REASON_NONE,
+            fault_eip: 0,
+            active_thread_id: 0,
+            thread_count: 0,
+            current_cycle: 0,
+            instructions_executed: 0,
+            events_fired: 0,
+            registers: XblobCpuRegistersSnapshot {
+                struct_size: std::mem::size_of::<XblobCpuRegistersSnapshot>() as u32,
+                eax: 0,
+                ecx: 0,
+                edx: 0,
+                ebx: 0,
+                esp: 0,
+                ebp: 0,
+                esi: 0,
+                edi: 0,
+                eip: 0,
+                eflags: 0,
+            },
+            stack_valid: 0,
+            stack_words: [0; 8],
+            stop_reason_category: [0; 64],
+            stop_reason_symbol: [0; 64],
+            stop_reason_detail: [0; 256],
+            error_message: [0; 256],
+        };
+
+        let status = unsafe { xblob_machine_get_snapshot(self.handle as _, &mut snap) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(snap)
+    }
+
+    pub fn get_compatibility_diagnostic(&self) -> Result<XblobCompatibilityDiagnostic, FfiError> {
+        let mut diag = XblobCompatibilityDiagnostic {
+            struct_size: std::mem::size_of::<XblobCompatibilityDiagnostic>() as u32,
+            first_blocker_code: XBLOB_STOP_REASON_NONE,
+            blocker_ordinal_or_opcode: 0,
+            blocker_thread_id: 0,
+            blocker_eip: 0,
+            blocker_count: 0,
+            blocker_category: [0; 64],
+            blocker_symbol_or_mnemonic: [0; 64],
+            blocker_detail: [0; 256],
+            total_instructions: 0,
+            total_cycles: 0,
+        };
+
+        let status =
+            unsafe { xblob_machine_get_compatibility_diagnostic(self.handle as _, &mut diag) };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        Ok(diag)
+    }
+
+    pub fn get_trace_text(&self) -> Result<String, FfiError> {
+        let mut required_size: usize = 0;
+        let status = unsafe {
+            xblob_machine_get_trace_text(self.handle as _, ptr::null_mut(), &mut required_size)
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        if required_size <= 1 {
+            return Ok(String::new());
+        }
+        let mut buf = vec![0u8; required_size];
+        let mut inout_size = required_size;
+        let status = unsafe {
+            xblob_machine_get_trace_text(
+                self.handle as _,
+                buf.as_mut_ptr() as *mut c_char,
+                &mut inout_size,
+            )
+        };
+        if status != XBLOB_STATUS_OK {
+            return Err(FfiError::from_status(status));
+        }
+        let c_str = CStr::from_bytes_until_nul(&buf).map_err(|_| {
+            FfiError::InternalError("String trace FFI não terminada em nulo".into())
+        })?;
+        Ok(c_str.to_string_lossy().into_owned())
+    }
 }
+
+impl Drop for SafeMachineSession {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe {
+                xblob_machine_stop(self.handle);
+                xblob_machine_destroy(self.handle);
+            }
+            self.handle = ptr::null_mut();
+        }
+    }
+}
+
+unsafe impl Send for SafeMachineSession {}
 
 pub struct SafeVfsBrowser {
     handle: XblobVfsBrowserHandle,
@@ -554,15 +717,4 @@ pub fn encode_base64(data: &[u8]) -> String {
         }
     }
     result
-}
-
-impl Drop for SafeMachineSession {
-    fn drop(&mut self) {
-        if !self.handle.is_null() {
-            unsafe {
-                xblob_machine_destroy(self.handle);
-            }
-            self.handle = ptr::null_mut();
-        }
-    }
 }

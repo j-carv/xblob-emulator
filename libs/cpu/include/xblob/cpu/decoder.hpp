@@ -11,7 +11,9 @@ namespace xblob::cpu {
 class Decoder {
 public:
     template <typename MemoryType>
-    static Result<DecodedInstruction> Decode(const CpuContext& ctx, MemoryType& mem, GuestAddr eip);
+    static Result<DecodedInstruction>
+    Decode(const CpuContext& ctx, MemoryType& mem, GuestAddr eip,
+           std::optional<UnsupportedFormInfo>* out_unsupported = nullptr);
 };
 
 } // namespace xblob::cpu

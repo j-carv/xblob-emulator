@@ -1,13 +1,14 @@
 #include "xblob/machine/trace_buffer.hpp"
 
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 
 namespace xblob::machine {
 
 TraceRingBuffer::TraceRingBuffer(std::size_t capacity) : capacity_(capacity ? capacity : 1024) {}
 
-void TraceRingBuffer::PushEvent(TraceEvent event) {
+void TraceRingBuffer::PushEventLocked(TraceEvent event) {
     ++total_recorded_;
     if (events_.size() >= capacity_) {
         events_.pop_front();
@@ -18,7 +19,8 @@ void TraceRingBuffer::PushEvent(TraceEvent event) {
 
 void TraceRingBuffer::RecordInstruction(Cycle cycle, u32 thread_id, GuestAddr eip, u32 opcode,
                                         std::string_view mnemonic) {
-    PushEvent(TraceEvent{
+    std::lock_guard<std::mutex> lock(mutex_);
+    PushEventLocked(TraceEvent{
         .cycle = cycle,
         .type = TraceEventType::Instruction,
         .thread_id = thread_id,
@@ -31,7 +33,8 @@ void TraceRingBuffer::RecordInstruction(Cycle cycle, u32 thread_id, GuestAddr ei
 
 void TraceRingBuffer::RecordException(Cycle cycle, u32 thread_id, GuestAddr eip, u32 vector,
                                       u32 error_code) {
-    PushEvent(TraceEvent{
+    std::lock_guard<std::mutex> lock(mutex_);
+    PushEventLocked(TraceEvent{
         .cycle = cycle,
         .type = TraceEventType::Exception,
         .thread_id = thread_id,
@@ -44,7 +47,8 @@ void TraceRingBuffer::RecordException(Cycle cycle, u32 thread_id, GuestAddr eip,
 
 void TraceRingBuffer::RecordKernelHle(Cycle cycle, u32 thread_id, GuestAddr eip, u32 ordinal,
                                       u32 return_value, std::string_view export_name) {
-    PushEvent(TraceEvent{
+    std::lock_guard<std::mutex> lock(mutex_);
+    PushEventLocked(TraceEvent{
         .cycle = cycle,
         .type = TraceEventType::KernelHle,
         .thread_id = thread_id,
@@ -57,7 +61,8 @@ void TraceRingBuffer::RecordKernelHle(Cycle cycle, u32 thread_id, GuestAddr eip,
 
 void TraceRingBuffer::RecordThreadSwitch(Cycle cycle, u32 from_tid, u32 to_tid,
                                          GuestAddr next_eip) {
-    PushEvent(TraceEvent{
+    std::lock_guard<std::mutex> lock(mutex_);
+    PushEventLocked(TraceEvent{
         .cycle = cycle,
         .type = TraceEventType::ThreadSwitch,
         .thread_id = to_tid,
@@ -68,11 +73,33 @@ void TraceRingBuffer::RecordThreadSwitch(Cycle cycle, u32 from_tid, u32 to_tid,
     });
 }
 
+std::size_t TraceRingBuffer::capacity() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return capacity_;
+}
+
+std::size_t TraceRingBuffer::size() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return events_.size();
+}
+
+u64 TraceRingBuffer::total_recorded() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return total_recorded_;
+}
+
+u64 TraceRingBuffer::dropped_count() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return dropped_count_;
+}
+
 std::vector<TraceEvent> TraceRingBuffer::Snapshot() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     return {events_.begin(), events_.end()};
 }
 
 std::string TraceRingBuffer::FormatText() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     std::ostringstream ss;
     for (const auto& ev : events_) {
         ss << "[" << std::dec << ev.cycle << "] ";
@@ -106,6 +133,7 @@ std::string TraceRingBuffer::FormatText() const {
 }
 
 void TraceRingBuffer::Clear() noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
     events_.clear();
     total_recorded_ = 0;
     dropped_count_ = 0;
