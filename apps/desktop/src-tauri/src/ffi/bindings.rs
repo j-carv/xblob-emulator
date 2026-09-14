@@ -15,7 +15,7 @@ pub const XBLOB_STATUS_ERROR_INVALID_STATE: XblobStatus = 9;
 pub const XBLOB_STATUS_ERROR_INTERNAL: XblobStatus = 99;
 
 pub const XBLOB_C_API_VERSION_MAJOR: u32 = 1;
-pub const XBLOB_C_API_VERSION_MINOR: u32 = 4;
+pub const XBLOB_C_API_VERSION_MINOR: u32 = 5;
 pub const XBLOB_C_API_VERSION_PATCH: u32 = 0;
 
 pub const XBLOB_CAPABILITY_NONE: u64 = 0;
@@ -32,6 +32,8 @@ pub const XBLOB_CAPABILITY_FRAMEBUFFER_PRESENTATION: u64 = 1 << 9;
 pub const XBLOB_CAPABILITY_NV2A_GPU: u64 = 1 << 10;
 pub const XBLOB_CAPABILITY_XDVDFS_VFS: u64 = 1 << 11;
 pub const XBLOB_CAPABILITY_MEDIA_BOOT: u64 = 1 << 12;
+pub const XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION: u64 = 1 << 13;
+pub const XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS: u64 = 1 << 14;
 
 pub type XblobMediaType = i32;
 pub const XBLOB_MEDIA_TYPE_UNKNOWN: XblobMediaType = 0;
@@ -46,6 +48,25 @@ pub const XBLOB_MACHINE_STATE_PREPARED: XblobMachineState = 1;
 pub const XBLOB_MACHINE_STATE_PAUSED: XblobMachineState = 2;
 pub const XBLOB_MACHINE_STATE_FAULTED: XblobMachineState = 3;
 pub const XBLOB_MACHINE_STATE_STOPPED: XblobMachineState = 4;
+pub const XBLOB_MACHINE_STATE_RUNNING: XblobMachineState = 5;
+
+pub type XblobStopReasonCode = i32;
+pub const XBLOB_STOP_REASON_NONE: XblobStopReasonCode = 0;
+pub const XBLOB_STOP_REASON_PAUSED: XblobStopReasonCode = 1;
+pub const XBLOB_STOP_REASON_STEP_COMPLETED: XblobStopReasonCode = 2;
+pub const XBLOB_STOP_REASON_HALTED: XblobStopReasonCode = 3;
+pub const XBLOB_STOP_REASON_BUDGET_INSTRUCTIONS: XblobStopReasonCode = 4;
+pub const XBLOB_STOP_REASON_BUDGET_CYCLES: XblobStopReasonCode = 5;
+pub const XBLOB_STOP_REASON_BUDGET_WALL_TIME: XblobStopReasonCode = 6;
+pub const XBLOB_STOP_REASON_BUDGET_EVENTS: XblobStopReasonCode = 7;
+pub const XBLOB_STOP_REASON_WATCHDOG_TIMEOUT: XblobStopReasonCode = 8;
+pub const XBLOB_STOP_REASON_UNSUPPORTED_OPCODE: XblobStopReasonCode = 9;
+pub const XBLOB_STOP_REASON_UNSUPPORTED_EXPORT: XblobStopReasonCode = 10;
+pub const XBLOB_STOP_REASON_UNSUPPORTED_GPU_METHOD: XblobStopReasonCode = 11;
+pub const XBLOB_STOP_REASON_UNSUPPORTED_FILE_SERVICE: XblobStopReasonCode = 12;
+pub const XBLOB_STOP_REASON_CPU_EXCEPTION: XblobStopReasonCode = 13;
+pub const XBLOB_STOP_REASON_MEMORY_FAULT: XblobStopReasonCode = 14;
+pub const XBLOB_STOP_REASON_INTERNAL_ERROR: XblobStopReasonCode = 15;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -258,6 +279,102 @@ extern "C" {
         out_entries: *mut XblobDirEntry,
         inout_count: *mut u32,
     ) -> XblobStatus;
+
+    pub fn xblob_machine_start_execution(
+        machine: XblobMachineHandle,
+        budgets: *const XblobExecutionBudgets,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_resume_execution(
+        machine: XblobMachineHandle,
+        budgets: *const XblobExecutionBudgets,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_wait_completion(
+        machine: XblobMachineHandle,
+        timeout_ms: u32,
+        out_completed: *mut i32,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_get_snapshot(
+        machine: *const XblobMachineOpaque,
+        out_snapshot: *mut XblobMachineSnapshot,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_get_compatibility_diagnostic(
+        machine: *const XblobMachineOpaque,
+        out_diagnostic: *mut XblobCompatibilityDiagnostic,
+    ) -> XblobStatus;
+
+    pub fn xblob_machine_get_trace_text(
+        machine: *const XblobMachineOpaque,
+        buffer: *mut c_char,
+        inout_buffer_size: *mut usize,
+    ) -> XblobStatus;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobExecutionBudgets {
+    pub struct_size: u32,
+    pub max_instructions: u64,
+    pub max_cycles: u64,
+    pub max_wall_time_ms: u64,
+    pub max_events: u64,
+    pub chunk_instructions: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobCpuRegistersSnapshot {
+    pub struct_size: u32,
+    pub eax: u32,
+    pub ecx: u32,
+    pub edx: u32,
+    pub ebx: u32,
+    pub esp: u32,
+    pub ebp: u32,
+    pub esi: u32,
+    pub edi: u32,
+    pub eip: u32,
+    pub eflags: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobMachineSnapshot {
+    pub struct_size: u32,
+    pub state: XblobMachineState,
+    pub stop_reason_code: XblobStopReasonCode,
+    pub fault_eip: u32,
+    pub active_thread_id: u32,
+    pub thread_count: u32,
+    pub current_cycle: u64,
+    pub instructions_executed: u64,
+    pub events_fired: u64,
+    pub registers: XblobCpuRegistersSnapshot,
+    pub stack_valid: i32,
+    pub stack_words: [u32; 8],
+    pub stop_reason_category: [c_char; 64],
+    pub stop_reason_symbol: [c_char; 64],
+    pub stop_reason_detail: [c_char; 256],
+    pub error_message: [c_char; 256],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XblobCompatibilityDiagnostic {
+    pub struct_size: u32,
+    pub first_blocker_code: XblobStopReasonCode,
+    pub blocker_ordinal_or_opcode: u32,
+    pub blocker_thread_id: u32,
+    pub blocker_eip: u32,
+    pub blocker_count: u64,
+    pub blocker_category: [c_char; 64],
+    pub blocker_symbol_or_mnemonic: [c_char; 64],
+    pub blocker_detail: [c_char; 256],
+    pub total_instructions: u64,
+    pub total_cycles: u64,
 }
 
 #[repr(C)]

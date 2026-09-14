@@ -12,7 +12,14 @@ pub fn run() {
             commands::prepare_machine_diagnostic,
             commands::get_diagnostic_frame_snapshot,
             commands::prepare_media,
-            commands::browse_media_vfs
+            commands::browse_media_vfs,
+            commands::start_title_execution,
+            commands::resume_title_execution,
+            commands::pause_title_execution,
+            commands::stop_title_execution,
+            commands::get_execution_snapshot,
+            commands::get_compatibility_diagnostic,
+            commands::get_execution_trace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running xblob desktop application");
@@ -31,7 +38,7 @@ mod tests {
 
         let info = result.unwrap();
         assert_eq!(info.abi_version_major, 1);
-        assert_eq!(info.abi_version_minor, 4);
+        assert_eq!(info.abi_version_minor, 5);
         assert_eq!(info.abi_version_patch, 0);
         assert!(info.capabilities > 0);
         assert!(
@@ -49,6 +56,14 @@ mod tests {
         assert!(
             (info.capabilities & ffi::XBLOB_CAPABILITY_MEDIA_BOOT) != 0,
             "Must have MEDIA_BOOT capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_EXPERIMENTAL_TITLE_EXECUTION) != 0,
+            "Must have EXPERIMENTAL_TITLE_EXECUTION capability"
+        );
+        assert!(
+            (info.capabilities & ffi::XBLOB_CAPABILITY_COMPATIBILITY_DIAGNOSTICS) != 0,
+            "Must have COMPATIBILITY_DIAGNOSTICS capability"
         );
         assert_eq!(info.product_name, "xblob");
         assert_eq!(info.product_version, "0.1.0");
@@ -168,5 +183,29 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_start_execution_missing_file() {
+        let result = tauri::async_runtime::block_on(commands::start_title_execution(
+            "/path/to/non_existent.xbe".to_string(),
+            None,
+        ));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn test_pause_resume_without_active_session() {
+        let result = tauri::async_runtime::block_on(commands::pause_title_execution());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, "NO_ACTIVE_SESSION");
+
+        let res_resume = tauri::async_runtime::block_on(commands::resume_title_execution(None));
+        assert!(res_resume.is_err());
+        let err2 = res_resume.unwrap_err();
+        assert_eq!(err2.code, "NO_ACTIVE_SESSION");
     }
 }
